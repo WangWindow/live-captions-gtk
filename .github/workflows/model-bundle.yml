@@ -11,39 +11,16 @@ on:
 permissions:
   contents: write
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
   bundle:
     name: Bundle models
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install system dependencies
+      - name: Package Streaming Zipformer (中文)
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq \
-            libgtk-4-dev \
-            libadwaita-1-dev \
-            libasound2-dev \
-            libpulse-dev \
-            libpipewire-0.3-dev \
-            libspa-0.2-dev \
-            pkg-config
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Build (for lockfile)
-        run: cargo generate-lockfile
-
-      - name: Download ASR models
-        run: |
-          mkdir -p models
-          # 从预设模型定义中提取 HF repo 和文件名下载
-          # Zipformer 中文
+          mkdir -p dist
           echo "=== Downloading Streaming Zipformer (中文) ==="
           gh release download asr-models \
             --repo k2-fsa/sherpa-onnx \
@@ -51,10 +28,16 @@ jobs:
             -D /tmp/models/ 2>/dev/null || \
           curl -sSLo /tmp/models/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30.tar.bz2 \
             "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30.tar.bz2"
-          tar xf /tmp/models/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30.tar.bz2 -C models/
-          rm /tmp/models/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30.tar.bz2
+          tar xf /tmp/models/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30.tar.bz2 -C /tmp/models/
+          tar czf dist/zipformer-zh.tar.gz \
+            -C /tmp/models/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30 .
+          rm -rf /tmp/models/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30 \
+            /tmp/models/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30.tar.bz2
+          echo "=== Size ==="
+          du -sh dist/zipformer-zh.tar.gz
 
-          # Paraformer 中英双语
+      - name: Package Streaming Paraformer (中英双语)
+        run: |
           echo "=== Downloading Streaming Paraformer (中英双语) ==="
           curl -sSLo /tmp/models/sherpa-onnx-streaming-paraformer-bilingual-zh-en.tar.bz2 \
             "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-paraformer-bilingual-zh-en.tar.bz2" 2>/dev/null || \
@@ -63,26 +46,30 @@ jobs:
             --pattern "sherpa-onnx-streaming-paraformer-bilingual-zh-en.tar.bz2" \
             -D /tmp/models/
           if [ -f /tmp/models/sherpa-onnx-streaming-paraformer-bilingual-zh-en.tar.bz2 ]; then
-            tar xf /tmp/models/sherpa-onnx-streaming-paraformer-bilingual-zh-en.tar.bz2 -C models/
-            rm /tmp/models/sherpa-onnx-streaming-paraformer-bilingual-zh-en.tar.bz2
+            tar xf /tmp/models/sherpa-onnx-streaming-paraformer-bilingual-zh-en.tar.bz2 -C /tmp/models/
+            tar czf dist/paraformer-bilingual-zh-en.tar.gz \
+              -C /tmp/models/sherpa-onnx-streaming-paraformer-bilingual-zh-en .
+            rm -rf /tmp/models/sherpa-onnx-streaming-paraformer-bilingual-zh-en \
+              /tmp/models/sherpa-onnx-streaming-paraformer-bilingual-zh-en.tar.bz2
           fi
+          echo "=== Size ==="
+          du -sh dist/paraformer-bilingual-zh-en.tar.gz 2>/dev/null || true
 
-      - name: Download punctuation model
+      - name: Package Punctuation model (中英)
         run: |
           echo "=== Downloading Punctuation model ==="
           curl -sSLo /tmp/models/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8.tar.bz2 \
             "https://github.com/k2-fsa/sherpa-onnx/releases/download/punctuation-models/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8.tar.bz2"
-          tar xf /tmp/models/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8.tar.bz2 -C models/
-          rm /tmp/models/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8.tar.bz2
+          tar xf /tmp/models/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8.tar.bz2 -C /tmp/models/
+          tar czf dist/punct-ct-transformer-zh-en.tar.gz \
+            -C /tmp/models/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8 .
+          rm -rf /tmp/models/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8 \
+            /tmp/models/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8.tar.bz2
+          echo "=== Size ==="
+          du -sh dist/punct-ct-transformer-zh-en.tar.gz
 
-      - name: Package models
-        run: |
-          mkdir -p dist
-          tar czf dist/live-captions-models.tar.gz -C models .
-          echo "=== Model bundle size ==="
-          du -sh dist/live-captions-models.tar.gz
-          echo "=== Included models ==="
-          ls -lh models/
+      - name: List packages
+        run: ls -lh dist/
 
       - name: Create release
         uses: softprops/action-gh-release@v2
@@ -92,17 +79,25 @@ jobs:
           body: |
             ## 模型资源包 ${{ inputs.version }}
 
-            包含以下预训练模型，下载后解压到 `~/.config/live.captions.gtk/models/` 即可使用。
+            各模型独立打包，按需下载解压到 `~/.config/live.captions.gtk/models/` 即可使用。
 
             ### 内容
 
-            - **Streaming Zipformer (中文)** — sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30 (~160MB)
-            - **Streaming Paraformer (中英双语)** — sherpa-onnx-streaming-paraformer-bilingual-zh-en (~226MB)
-            - **Punctuation CT-Transformer (中英)** — sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8 (~72MB)
+            | 模型 | 文件 | 说明 |
+            |------|------|------|
+            | Streaming Zipformer (中文) | `zipformer-zh.tar.gz` | ~160MB |
+            | Streaming Paraformer (中英双语) | `paraformer-bilingual-zh-en.tar.gz` | ~226MB |
+            | Punctuation CT-Transformer (中英) | `punct-ct-transformer-zh-en.tar.gz` | ~72MB |
 
             ### 使用方式
 
             ```bash
-            tar xzf live-captions-models.tar.gz -C ~/.config/live.captions.gtk/models/
+            # 按需下载需要的模型
+            tar xzf zipformer-zh.tar.gz -C ~/.config/live.captions.gtk/models/
+            tar xzf paraformer-bilingual-zh-en.tar.gz -C ~/.config/live.captions.gtk/models/
+            tar xzf punct-ct-transformer-zh-en.tar.gz -C ~/.config/live.captions.gtk/models/
             ```
-          files: dist/live-captions-models.tar.gz
+          files: |
+            dist/zipformer-zh.tar.gz
+            dist/paraformer-bilingual-zh-en.tar.gz
+            dist/punct-ct-transformer-zh-en.tar.gz
