@@ -8,9 +8,11 @@ on:
         required: true
         type: string
 
+permissions:
+  contents: write
+
 env:
   CARGO_TERM_COLOR: always
-  GH_TOKEN: ${{ github.token }}
 
 jobs:
   bundle:
