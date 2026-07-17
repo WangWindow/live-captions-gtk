@@ -1,0 +1,106 @@
+name: Bundle Models
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. models-2025-01)'
+        required: true
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  bundle:
+    name: Bundle models
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            libgtk-4-dev \
+            libadwaita-1-dev \
+            libasound2-dev \
+            libpulse-dev \
+            libpipewire-0.3-dev \
+            libspa-0.2-dev \
+            pkg-config
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build (for lockfile)
+        run: cargo generate-lockfile
+
+      - name: Download ASR models
+        run: |
+          mkdir -p models
+          # 从预设模型定义中提取 HF repo 和文件名下载
+          # Zipformer 中文
+          echo "=== Downloading Streaming Zipformer (中文) ==="
+          gh release download asr-models \
+            --repo k2-fsa/sherpa-onnx \
+            --pattern "sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30.tar.bz2" \
+            -D /tmp/models/ 2>/dev/null || \
+          curl -sSLo /tmp/models/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30.tar.bz2 \
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30.tar.bz2"
+          tar xf /tmp/models/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30.tar.bz2 -C models/
+          rm /tmp/models/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30.tar.bz2
+
+          # Paraformer 中英双语
+          echo "=== Downloading Streaming Paraformer (中英双语) ==="
+          curl -sSLo /tmp/models/sherpa-onnx-streaming-paraformer-bilingual-zh-en.tar.bz2 \
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-paraformer-bilingual-zh-en.tar.bz2" 2>/dev/null || \
+          gh release download asr-models \
+            --repo k2-fsa/sherpa-onnx \
+            --pattern "sherpa-onnx-streaming-paraformer-bilingual-zh-en.tar.bz2" \
+            -D /tmp/models/
+          if [ -f /tmp/models/sherpa-onnx-streaming-paraformer-bilingual-zh-en.tar.bz2 ]; then
+            tar xf /tmp/models/sherpa-onnx-streaming-paraformer-bilingual-zh-en.tar.bz2 -C models/
+            rm /tmp/models/sherpa-onnx-streaming-paraformer-bilingual-zh-en.tar.bz2
+          fi
+
+      - name: Download punctuation model
+        run: |
+          echo "=== Downloading Punctuation model ==="
+          curl -sSLo /tmp/models/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8.tar.bz2 \
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/punctuation-models/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8.tar.bz2"
+          tar xf /tmp/models/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8.tar.bz2 -C models/
+          rm /tmp/models/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8.tar.bz2
+
+      - name: Package models
+        run: |
+          mkdir -p dist
+          tar czf dist/live-captions-models.tar.gz -C models .
+          echo "=== Model bundle size ==="
+          du -sh dist/live-captions-models.tar.gz
+          echo "=== Included models ==="
+          ls -lh models/
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version }}
+          name: "Model Bundle ${{ inputs.version }}"
+          body: |
+            ## 模型资源包 ${{ inputs.version }}
+
+            包含以下预训练模型，下载后解压到 `~/.config/live.captions.gtk/models/` 即可使用。
+
+            ### 内容
+
+            - **Streaming Zipformer (中文)** — sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30 (~160MB)
+            - **Streaming Paraformer (中英双语)** — sherpa-onnx-streaming-paraformer-bilingual-zh-en (~226MB)
+            - **Punctuation CT-Transformer (中英)** — sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8 (~72MB)
+
+            ### 使用方式
+
+            ```bash
+            tar xzf live-captions-models.tar.gz -C ~/.config/live.captions.gtk/models/
+            ```
+          files: dist/live-captions-models.tar.gz
