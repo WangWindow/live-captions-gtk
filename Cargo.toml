@@ -6,7 +6,7 @@ description = "实时语音转字幕桌面应用 —— 基于 sherpa-onnx 和 l
 license = "MIT"
 
 [dependencies]
-adw = { package = "libadwaita", version = "0.9", features = ["v1_9"] }
+adw = { package = "libadwaita", version = "0.9", features = ["v1_5"] }
 anyhow = "1.0"
 bzip2 = "0.6"
 cpal = { version = "0.18", default-features = false, features = [
