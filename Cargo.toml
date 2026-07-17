@@ -1,6 +1,6 @@
 [package]
 name = "live-captions-gtk"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "实时语音转字幕桌面应用 —— 基于 sherpa-onnx 和 libadwaita"
 license = "MIT"
