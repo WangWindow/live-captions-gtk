@@ -6,5 +6,5 @@
 mod capture;
 mod device;
 
-pub use capture::AudioCapture;
+pub use capture::{AudioCapture, process_chunk};
 pub use device::{AudioSource, resolve};

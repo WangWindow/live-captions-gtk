@@ -116,7 +116,7 @@ fn run_pipeline(
     };
 
     // ---- 5. 启动音频捕获 ----
-    let mut capture = match AudioCapture::new(&device, 1024) {
+    let mut capture = match AudioCapture::new(&device) {
         Ok(c) => c,
         Err(e) => {
             let _ = sender.send(PipelineMsg::Error(format!("音频捕获失败: {e}")));
@@ -152,6 +152,10 @@ fn run_loop(
     let mut last_text = String::new();
     while !stop_flag.load(Ordering::Relaxed) {
         let samples = capture.drain(chunk);
+        let dropped_samples = capture.take_dropped_samples();
+        if dropped_samples > 0 {
+            eprintln!("音频环形缓冲区丢弃了 {dropped_samples} 个采样点");
+        }
         if !samples.is_empty() {
             match engine.transcribe(&samples, sample_rate) {
                 Ok(text) => {

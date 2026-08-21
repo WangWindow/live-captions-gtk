@@ -3,16 +3,10 @@
 //! 基于 Whisper.cpp 语音识别引擎，支持麦克风和系统音频捕获，
 //! 以浮动字幕条的形式在桌面上实时显示识别文本。
 
-mod asr;
-mod audio;
-mod downloader;
-mod pipeline;
-mod presets;
-mod ui;
-
 use adw::Application;
 use adw::prelude::*;
 use gtk4::glib;
+use live_captions_gtk::{presets, ui};
 use std::sync::{Arc, RwLock};
 
 use presets::{APP_ID, Settings};
