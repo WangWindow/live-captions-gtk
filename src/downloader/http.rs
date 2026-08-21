@@ -3,22 +3,20 @@
 //! 为通常的 http 下载预留。
 //! 大文件自动启用多线程 Range 分块加速。
 
-#![allow(dead_code)]
-
 use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, mpsc};
+use std::sync::{mpsc, Arc};
 
 use crate::presets::DownloadMsg;
 
 /// 并发下载线程数
 const NUM_THREADS: usize = 6;
 
-/// 大文件分块阈值（GitHub CDN 对 Range 支持不稳定，设高点）
+/// 大文件分块阈值（GitHub CDN 对 Range 支持不稳定，设高点）。
 const SINGLE_THREAD_THRESHOLD: u64 = 100 * 1024 * 1024;
 
-const BUF_SIZE: usize = 64 * 1024;  
+const BUF_SIZE: usize = 64 * 1024;
 
 /// 通过 HTTP 下载一个文件
 ///
@@ -32,8 +30,8 @@ pub fn download_file(url: &str, dest: &Path, tx: &mpsc::Sender<DownloadMsg>) -> 
         .build()
         .map_err(|e| format!("创建 HTTP 客户端失败: {e}"))?;
 
-    // 探测文件大小
-    let (total, accepts_ranges) = probe_file_size(&client, url)?;
+    // 探测失败时仍继续下载，进度总量退化为未知。
+    let (total, accepts_ranges) = probe_file_size(&client, url).unwrap_or((0, false));
     let _ = tx.send(DownloadMsg::Progress {
         downloaded: 0,
         total,
@@ -41,13 +39,28 @@ pub fn download_file(url: &str, dest: &Path, tx: &mpsc::Sender<DownloadMsg>) -> 
 
     let acc = Arc::new(AtomicU64::new(0));
 
-    if accepts_ranges && total > SINGLE_THREAD_THRESHOLD {
-        download_multithreaded(&client, url, dest, total, Arc::clone(&acc), tx.clone())?;
+    let partial = partial_path(dest)?;
+    let result = if accepts_ranges && total > SINGLE_THREAD_THRESHOLD {
+        download_multithreaded(&client, url, &partial, total, Arc::clone(&acc), tx.clone())
     } else {
-        download_single(&client, url, dest, total, &acc, tx)?;
+        download_single(&client, url, &partial, total, &acc, tx)
+    };
+    if let Err(error) = result {
+        let _ = std::fs::remove_file(&partial);
+        return Err(error);
     }
 
+    std::fs::rename(&partial, dest).map_err(|e| format!("替换下载文件失败: {e}"))?;
+
     Ok(())
+}
+
+fn partial_path(dest: &Path) -> Result<std::path::PathBuf, String> {
+    let file_name = dest
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "下载目标文件名无效".to_string())?;
+    Ok(dest.with_file_name(format!(".{file_name}.part")))
 }
 
 // ============================================================================
@@ -55,10 +68,10 @@ pub fn download_file(url: &str, dest: &Path, tx: &mpsc::Sender<DownloadMsg>) -> 
 // ============================================================================
 
 fn probe_file_size(client: &reqwest::blocking::Client, url: &str) -> Result<(u64, bool), String> {
-    let resp = client
-        .head(url)
-        .send()
-        .map_err(|e| format!("HEAD 失败: {e}"))?;
+    let resp = match client.head(url).send() {
+        Ok(resp) => resp,
+        Err(_) => return Ok(probe_via_range(client, url).unwrap_or((0, false))),
+    };
     if resp.status().is_success() {
         let total = get_content_length(resp.headers())?;
         let accepts = resp

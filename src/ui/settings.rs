@@ -2,13 +2,13 @@ use std::rc::Rc;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use adw::prelude::*;
-use adw::{ActionRow, ExpanderRow, PreferencesGroup, PreferencesPage};
 use adw::gtk as gtk4;
 use adw::gtk::{glib, pango};
+use adw::prelude::*;
+use adw::{ActionRow, ExpanderRow, PreferencesGroup, PreferencesPage};
 
 use crate::downloader;
-use crate::presets::{self, APP_NAME, DownloadMsg, Settings, SettingsHandle};
+use crate::presets::{self, DownloadMsg, Settings, SettingsHandle, APP_NAME};
 
 pub type OnChanged = Rc<dyn Fn()>;
 
@@ -172,13 +172,7 @@ fn start_download(
     let model_dir = dir.join(model_info.dir_name);
 
     // 检查是否已完整下载
-    let mut all_exist = true;
-    for f in model_info.files {
-        if !model_dir.join(f.filename).exists() {
-            all_exist = false;
-            break;
-        }
-    }
+    let all_exist = model_info.is_complete(&model_dir);
     if all_exist {
         expander.set_subtitle("模型已存在 ✓");
         expander.set_sensitive(true);

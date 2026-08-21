@@ -18,6 +18,7 @@ pub fn download_file(
     hf_repo: &str,
     filename: &str,
     dest: &Path,
+    estimated_size_bytes: u64,
     tx: &mpsc::Sender<DownloadMsg>,
 ) -> Result<(), String> {
     // 拆解 repo 为 owner 和 name
@@ -28,11 +29,9 @@ pub fn download_file(
     // 创建 hf-hub 同步客户端
     let client = hf_hub::HFClientSync::new().map_err(|e| format!("创建 HF 客户端失败: {e}"))?;
 
-    // 先探测文件大小用于进度（仅估算，不阻塞）
-    let total = probe_file_size(owner, name, filename).unwrap_or(0);
     let _ = tx.send(DownloadMsg::Progress {
         downloaded: 0,
-        total,
+        total: estimated_size_bytes,
     });
 
     // 下载（hf-hub 自动缓存到 ~/.cache/huggingface/hub/）
@@ -53,26 +52,9 @@ pub fn download_file(
     if let Ok(meta) = std::fs::metadata(dest) {
         let _ = tx.send(DownloadMsg::Progress {
             downloaded: meta.len(),
-            total,
+            total: estimated_size_bytes,
         });
     }
 
     Ok(())
-}
-
-/// 通过 HuggingFace API 探测文件大小（仅用于进度显示）
-fn probe_file_size(owner: &str, name: &str, filename: &str) -> Option<u64> {
-    let url = format!("https://huggingface.co/{owner}/{name}/resolve/main/{filename}");
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
-        .build()
-        .ok()?;
-
-    let resp = client.head(&url).send().ok()?;
-    resp.headers()
-        .get(reqwest::header::CONTENT_LENGTH)?
-        .to_str()
-        .ok()?
-        .parse()
-        .ok()
 }

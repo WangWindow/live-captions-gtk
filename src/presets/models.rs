@@ -2,6 +2,8 @@
 //!
 //! 每个模型不仅定义文件列表，还通过 [`ModelKind`] 告诉引擎如何加载。
 
+use std::path::Path;
+
 /// 引擎类型 & 配置 —— 模型告诉引擎怎么用自己
 #[derive(Debug, Clone, Copy)]
 pub enum ModelKind {
@@ -35,6 +37,8 @@ pub enum ModelCategory {
 pub struct ModelFile {
     pub filename: &'static str,
     pub description: &'static str,
+    /// 用于进度显示的文件大小估算，不参与完整性校验。
+    pub estimated_size_bytes: u64,
     /// 独立下载地址。`None` 时由 ModelInfo.hf_repo 决定来源。
     pub download_url: Option<&'static str>,
 }
@@ -53,6 +57,26 @@ pub struct ModelInfo {
     /// 若模型以压缩包形式发布（如 .tar.bz2），设置此 URL 下载后自动解压
     pub archive_url: Option<&'static str>,
     pub files: &'static [ModelFile],
+}
+
+impl ModelInfo {
+    /// 判断模型目录是否包含所有非空的必需文件。
+    pub fn is_complete(&self, model_dir: &Path) -> bool {
+        self.files.iter().all(|file| {
+            let path = model_dir.join(file.filename);
+            std::fs::metadata(path)
+                .map(|metadata| metadata.is_file() && metadata.len() > 0)
+                .unwrap_or(false)
+        })
+    }
+
+    /// 返回模型文件大小估算总和，仅用于下载进度显示。
+    pub fn estimated_size_bytes(&self) -> u64 {
+        self.files
+            .iter()
+            .map(|file| file.estimated_size_bytes)
+            .sum()
+    }
 }
 
 /// ASR 识别模型列表
@@ -75,21 +99,25 @@ pub const ASR_MODELS: &[ModelInfo] = &[
             ModelFile {
                 filename: "encoder.int8.onnx",
                 description: "编码器 (154 MB)",
+                estimated_size_bytes: 154 * 1024 * 1024,
                 download_url: None,
             },
             ModelFile {
                 filename: "decoder.onnx",
                 description: "解码器 (4.9 MB)",
+                estimated_size_bytes: 4_900_000,
                 download_url: None,
             },
             ModelFile {
                 filename: "joiner.int8.onnx",
                 description: "连接器 (1.0 MB)",
+                estimated_size_bytes: 1_000_000,
                 download_url: None,
             },
             ModelFile {
                 filename: "tokens.txt",
                 description: "词表",
+                estimated_size_bytes: 200_000,
                 download_url: None,
             },
         ],
@@ -110,16 +138,19 @@ pub const ASR_MODELS: &[ModelInfo] = &[
             ModelFile {
                 filename: "encoder.int8.onnx",
                 description: "编码器 (158 MB)",
+                estimated_size_bytes: 158 * 1024 * 1024,
                 download_url: None,
             },
             ModelFile {
                 filename: "decoder.int8.onnx",
                 description: "解码器 (68 MB)",
+                estimated_size_bytes: 68 * 1024 * 1024,
                 download_url: None,
             },
             ModelFile {
                 filename: "tokens.txt",
                 description: "词表",
+                estimated_size_bytes: 200_000,
                 download_url: None,
             },
         ],
@@ -140,6 +171,7 @@ pub const PUNCT_MODELS: &[ModelInfo] = &[ModelInfo {
     files: &[ModelFile {
         filename: "model.int8.onnx",
         description: "标点模型 (72 MB)",
+        estimated_size_bytes: 72 * 1024 * 1024,
         download_url: None, // 通过 archive_url 下载解压
     }],
 }];

@@ -29,10 +29,7 @@ pub fn download_model(model_info: &ModelInfo, dest_dir: &Path, tx: &mpsc::Sender
     // 压缩包发布模式：下载并解压
     if let Some(archive_url) = model_info.archive_url {
         // 检查所有定义的文件是否已存在
-        let all_exist = model_info
-            .files
-            .iter()
-            .all(|f| model_dir.join(f.filename).exists());
+        let all_exist = model_info.is_complete(&model_dir);
         if all_exist {
             let _ = tx.send(DownloadMsg::Done(model_dir.to_string_lossy().into_owned()));
             return;
@@ -56,6 +53,10 @@ pub fn download_model(model_info: &ModelInfo, dest_dir: &Path, tx: &mpsc::Sender
             return;
         }
         let _ = std::fs::remove_file(&archive_path);
+        if !model_info.is_complete(&model_dir) {
+            let _ = tx.send(DownloadMsg::Error("解压完成但模型文件不完整".into()));
+            return;
+        }
         let _ = tx.send(DownloadMsg::Done(model_dir.to_string_lossy().into_owned()));
         return;
     }
@@ -66,7 +67,7 @@ pub fn download_model(model_info: &ModelInfo, dest_dir: &Path, tx: &mpsc::Sender
     }
 
     // 先探测所有文件的总大小（仅用于进度显示）
-    let total_bytes: u64 = estimate_total_size(model_info);
+    let total_bytes = model_info.estimated_size_bytes();
     let _ = tx.send(DownloadMsg::Progress {
         downloaded: 0,
         total: total_bytes,
@@ -93,7 +94,13 @@ pub fn download_model(model_info: &ModelInfo, dest_dir: &Path, tx: &mpsc::Sender
         let result = if let Some(url) = file_entry.download_url {
             http::download_file(url, &dest_path, tx)
         } else if let Some(repo) = &model_info.hf_repo {
-            hf::download_file(repo, file_entry.filename, &dest_path, tx)
+            hf::download_file(
+                repo,
+                file_entry.filename,
+                &dest_path,
+                file_entry.estimated_size_bytes,
+                tx,
+            )
         } else {
             let _ = tx.send(DownloadMsg::Error(format!(
                 "{} 无下载来源",
@@ -119,19 +126,4 @@ pub fn download_model(model_info: &ModelInfo, dest_dir: &Path, tx: &mpsc::Sender
     }
 
     let _ = tx.send(DownloadMsg::Done(model_dir.to_string_lossy().into_owned()));
-}
-
-/// 估算模型所有文件的总大小（已存在文件的实际大小 + 缺失文件按 50MB 估算）
-fn estimate_total_size(model_info: &ModelInfo) -> u64 {
-    let model_dir = crate::presets::models_dir().join(model_info.dir_name);
-    model_info
-        .files
-        .iter()
-        .map(|f| {
-            let path = model_dir.join(f.filename);
-            std::fs::metadata(&path)
-                .map(|m| m.len())
-                .unwrap_or(50 * 1024 * 1024)
-        })
-        .sum()
 }
