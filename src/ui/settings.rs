@@ -82,8 +82,9 @@ impl SettingsWindow {
 
         let suffix = gtk4::Box::new(gtk4::Orientation::Horizontal, 6);
         let add_btn = gtk4::Button::builder()
-            .icon_name("list-add-symbolic")
-            .tooltip_text("从文件导入")
+            .icon_name("folder-open-symbolic")
+            .tooltip_text("导入模型目录")
+            .has_frame(false)
             .build();
         {
             let s = settings.clone();
@@ -139,8 +140,10 @@ fn build_download_row(
         .title(model_info.name)
         .subtitle(model_info.description)
         .build();
-    let button = gtk4::Button::with_label("下载");
+    let button = gtk4::Button::from_icon_name("folder-download-symbolic");
     button.set_valign(gtk4::Align::Center);
+    button.set_has_frame(false);
+    button.set_tooltip_text(Some("下载模型"));
     let download_row = row.clone();
     let download_button = button.clone();
     button.connect_clicked(move |_| {
@@ -166,14 +169,16 @@ fn start_download(
     window: &adw::Window,
 ) {
     row.set_subtitle(&format!("正在下载 {}…", model_info.name));
-    button.set_label("下载中…");
+    button.set_icon_name("process-stop-symbolic");
+    button.set_tooltip_text(Some("正在下载"));
     button.set_sensitive(false);
 
     let dir = match Settings::ensure_models_dir() {
         Ok(d) => d,
         Err(e) => {
             row.set_subtitle(&format!("错误: {e}"));
-            button.set_label("重试");
+            button.set_icon_name("view-refresh-symbolic");
+            button.set_tooltip_text(Some("重试下载"));
             button.set_sensitive(true);
             return;
         }
@@ -184,7 +189,8 @@ fn start_download(
     let all_exist = model_info.is_complete(&model_dir);
     if all_exist {
         row.set_subtitle("模型已存在 ✓");
-        button.set_label("已安装");
+        button.set_icon_name("checkbox-checked-symbolic");
+        button.set_tooltip_text(Some("模型已安装"));
         button.set_sensitive(true);
         download_done(
             model_dir.to_string_lossy().into_owned(),
@@ -223,21 +229,24 @@ fn start_download(
         }
         Ok(DownloadMsg::Done(path)) => {
             row.set_subtitle("下载完成 ✓");
-            button.set_label("已安装");
+            button.set_icon_name("checkbox-checked-symbolic");
+            button.set_tooltip_text(Some("模型已安装"));
             button.set_sensitive(true);
             download_done(path, &s, &lb, &w, cat);
             glib::ControlFlow::Break
         }
         Ok(DownloadMsg::Error(e)) => {
             row.set_subtitle(&format!("失败: {e}"));
-            button.set_label("重试");
+            button.set_icon_name("view-refresh-symbolic");
+            button.set_tooltip_text(Some("重试下载"));
             button.set_sensitive(true);
             glib::ControlFlow::Break
         }
         Err(mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
         Err(mpsc::TryRecvError::Disconnected) => {
             row.set_subtitle("下载中断");
-            button.set_label("重试");
+            button.set_icon_name("view-refresh-symbolic");
+            button.set_tooltip_text(Some("重试下载"));
             button.set_sensitive(true);
             glib::ControlFlow::Break
         }
@@ -275,8 +284,11 @@ fn download_done(
 fn build_source_row(settings: &SettingsHandle, on_changed: &OnChanged) -> ActionRow {
     let row = ActionRow::builder()
         .title("音频源")
-        .subtitle("选择录音设备")
+        .subtitle("系统音频 / 麦克风")
         .build();
+    row.add_prefix(&gtk4::Image::from_icon_name(
+        "audio-input-microphone-symbolic",
+    ));
 
     let current = settings.read().unwrap();
     let model = gtk4::StringList::new(&["系统音频", "麦克风"]);
@@ -312,8 +324,11 @@ fn build_source_row(settings: &SettingsHandle, on_changed: &OnChanged) -> Action
 fn build_language_row(settings: &SettingsHandle, on_changed: &OnChanged) -> ActionRow {
     let row = ActionRow::builder()
         .title("识别语言")
-        .subtitle("自动检测或指定语言")
+        .subtitle("自动 / 简体中文 / English")
         .build();
+    row.add_prefix(&gtk4::Image::from_icon_name(
+        "format-text-direction-ltr-symbolic",
+    ));
 
     let current = settings.read().unwrap();
     let model = gtk4::StringList::new(&["自动检测", "简体中文", "English"]);
@@ -345,8 +360,9 @@ fn build_language_row(settings: &SettingsHandle, on_changed: &OnChanged) -> Acti
 fn build_font_row(settings: &SettingsHandle, on_changed: &OnChanged) -> ActionRow {
     let row = ActionRow::builder()
         .title("字体")
-        .subtitle("字幕显示字号与字体")
+        .subtitle("字幕字体与字号")
         .build();
+    row.add_prefix(&gtk4::Image::from_icon_name("format-text-bold-symbolic"));
 
     let current = settings.read().unwrap();
     let btn = gtk4::FontButton::builder()
@@ -374,8 +390,9 @@ fn build_font_row(settings: &SettingsHandle, on_changed: &OnChanged) -> ActionRo
 fn build_line_width_row(settings: &SettingsHandle, on_changed: &OnChanged) -> ActionRow {
     let row = ActionRow::builder()
         .title("窗口宽度")
-        .subtitle("每行字符数，控制字幕条宽度")
+        .subtitle("字幕每行字符数")
         .build();
+    row.add_prefix(&gtk4::Image::from_icon_name("view-fullscreen-symbolic"));
 
     let current = settings.read().unwrap();
     let adj = gtk4::Adjustment::new(current.line_width as f64, 20.0, 140.0, 5.0, 10.0, 0.0);
@@ -406,8 +423,9 @@ fn build_line_width_row(settings: &SettingsHandle, on_changed: &OnChanged) -> Ac
 fn build_punctuation_row(settings: &SettingsHandle, on_changed: &OnChanged) -> ActionRow {
     let row = ActionRow::builder()
         .title("自动标点")
-        .subtitle("对识别结果自动添加逗号句号问号")
+        .subtitle("自动添加标点")
         .build();
+    row.add_prefix(&gtk4::Image::from_icon_name("document-edit-symbolic"));
 
     let current = settings.read().unwrap();
     let sw = gtk4::Switch::builder()
@@ -469,19 +487,18 @@ fn populate_model_list(list_box: &gtk4::ListBox, settings: SettingsHandle, win: 
         row_box.set_margin_bottom(6);
 
         if let Some(info) = model {
-            let marker = gtk4::Label::new(Some(match info.category {
-                presets::ModelCategory::Asr => "ASR",
-                presets::ModelCategory::Punctuation => "标点",
-            }));
-            marker.set_width_chars(5);
-            marker.set_xalign(0.5);
-            marker.add_css_class("dim-label");
+            let (icon_name, icon_tip) = match info.category {
+                presets::ModelCategory::Asr => ("audio-input-microphone-symbolic", "语音识别模型"),
+                presets::ModelCategory::Punctuation => ("document-edit-symbolic", "标点恢复模型"),
+            };
+            let marker = gtk4::Image::from_icon_name(icon_name);
+            marker.set_pixel_size(20);
+            marker.set_tooltip_text(Some(icon_tip));
             row_box.append(&marker);
         } else {
-            let marker = gtk4::Label::new(Some("未知"));
-            marker.set_width_chars(5);
-            marker.set_xalign(0.5);
-            marker.add_css_class("error");
+            let marker = gtk4::Image::from_icon_name("dialog-warning-symbolic");
+            marker.set_pixel_size(20);
+            marker.set_tooltip_text(Some("未知或不完整的模型"));
             row_box.append(&marker);
         }
 
