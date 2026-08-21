@@ -1,8 +1,8 @@
 //! GStreamer audio capture boundary.
 //!
-//! The source resolver will provide the source element in a later migration
-//! step. This module owns the common pipeline tail, appsink queue, sample
-//! mapping, and lifecycle semantics shared by all sources.
+//! The source resolver selects the source element; this module owns the
+//! common pipeline tail, appsink queue, sample mapping, and lifecycle
+//! semantics shared by all sources.
 
 use std::time::Duration;
 
@@ -12,6 +12,8 @@ use gstreamer::prelude::*;
 use gstreamer_app as gst_app;
 use gstreamer_audio as gst_audio;
 use gstreamer_audio::audio_buffer::Readable;
+
+use super::device::AudioSource;
 
 const AUDIO_SINK_NAME: &str = "audio_sink";
 
@@ -38,9 +40,8 @@ impl GstreamerCapture {
     /// `appsink` called `audio_sink`.
     ///
     /// The description must negotiate the standard caps returned by
-    /// [`standard_audio_caps`]. Keeping this constructor source-agnostic lets
-    /// the source resolver select PulseAudio or PipeWire independently from
-    /// sample mapping and queue handling.
+    /// [`standard_audio_caps`]. This constructor remains useful for
+    /// deterministic fake-source integration tests.
     pub fn from_pipeline_description(description: &str) -> Result<Self> {
         gst::init().context("无法初始化 GStreamer")?;
 
@@ -48,6 +49,50 @@ impl GstreamerCapture {
         let pipeline = element
             .downcast::<gst::Pipeline>()
             .map_err(|_| anyhow!("音频描述必须解析为 GStreamer pipeline"))?;
+        Self::from_pipeline(pipeline)
+    }
+
+    /// Build a standard capture pipeline around a source element created by a
+    /// GStreamer device/provider resolver.
+    pub fn from_source_element(source: gst::Element) -> Result<Self> {
+        gst::init().context("无法初始化 GStreamer")?;
+
+        let convert = gst::ElementFactory::make("audioconvert")
+            .name("audio_convert")
+            .build()
+            .context("缺少 GStreamer audioconvert plugin")?;
+        let resample = gst::ElementFactory::make("audioresample")
+            .name("audio_resample")
+            .build()
+            .context("缺少 GStreamer audioresample plugin")?;
+        let capsfilter = gst::ElementFactory::make("capsfilter")
+            .name("audio_caps")
+            .property("caps", standard_audio_caps())
+            .build()
+            .context("缺少 GStreamer capsfilter plugin")?;
+        let appsink = gst::ElementFactory::make("appsink")
+            .name(AUDIO_SINK_NAME)
+            .build()
+            .context("缺少 GStreamer appsink plugin")?;
+
+        let pipeline = gst::Pipeline::new();
+        pipeline
+            .add_many([&source, &convert, &resample, &capsfilter, &appsink])
+            .context("无法将 GStreamer 音频元素加入 pipeline")?;
+        gst::Element::link_many([&source, &convert, &resample, &capsfilter, &appsink])
+            .context("无法链接 GStreamer 音频 source pipeline")?;
+
+        Self::from_pipeline(pipeline)
+    }
+
+    /// Resolve the requested business source through GStreamer/PulseAudio
+    /// providers and start the standard capture pipeline.
+    pub fn start(source: AudioSource) -> Result<Self> {
+        let source_element = super::source::resolve_gstreamer_source(source)?;
+        Self::from_source_element(source_element)
+    }
+
+    fn from_pipeline(pipeline: gst::Pipeline) -> Result<Self> {
         let appsink = pipeline
             .by_name(AUDIO_SINK_NAME)
             .context("GStreamer pipeline 缺少名为 audio_sink 的 appsink")?
@@ -63,9 +108,12 @@ impl GstreamerCapture {
             gst_audio::AudioInfo::from_caps(&caps).context("无法从标准音频 caps 创建 AudioInfo")?;
         let last_dropped_buffers = appsink.property::<u64>("dropped");
 
-        pipeline
-            .set_state(gst::State::Playing)
-            .context("无法启动 GStreamer 音频管线")?;
+        if let Err(state_error) = pipeline.set_state(gst::State::Playing) {
+            let detail = pipeline_error_detail(&pipeline);
+            return Err(anyhow!(
+                "无法启动 GStreamer 音频管线（状态错误：{state_error:?}；{detail}）"
+            ));
+        }
 
         Ok(Self {
             pipeline,
@@ -155,5 +203,25 @@ impl GstreamerCapture {
 impl Drop for GstreamerCapture {
     fn drop(&mut self) {
         let _ = self.stop();
+    }
+}
+
+fn pipeline_error_detail(pipeline: &gst::Pipeline) -> String {
+    let Some(bus) = pipeline.bus() else {
+        return "pipeline 没有 bus 错误消息".into();
+    };
+    let Some(message) = bus.timed_pop_filtered(
+        gst::ClockTime::from_mseconds(100),
+        &[gst::MessageType::Error],
+    ) else {
+        return "未收到 GStreamer ERROR 消息".into();
+    };
+    match message.view() {
+        gst::MessageView::Error(error) => format!(
+            "{}；debug: {}",
+            error.error(),
+            error.debug().as_deref().unwrap_or("无")
+        ),
+        _ => "收到无法解析的 GStreamer 错误消息".into(),
     }
 }

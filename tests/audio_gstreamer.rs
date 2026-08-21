@@ -4,7 +4,7 @@ use gstreamer as gst;
 use gstreamer::prelude::*;
 use gstreamer_app as gst_app;
 use gstreamer_audio as gst_audio;
-use live_captions_gtk::audio::{standard_audio_caps, GstreamerCapture};
+use live_captions_gtk::audio::{standard_audio_caps, AudioSource, GstreamerCapture};
 
 struct PipelineGuard(gst::Pipeline);
 
@@ -148,4 +148,52 @@ fn capture_boundary_rejects_empty_and_wrong_format_samples() {
         .build();
 
     assert!(GstreamerCapture::samples_from_sample(&wrong_sample, &audio_info).is_err());
+}
+
+#[test]
+fn source_element_builder_adds_the_standard_capture_tail() {
+    gst::init().expect("GStreamer should initialize");
+    let source = gst::ElementFactory::make("audiotestsrc")
+        .property("is-live", true)
+        .build()
+        .expect("the fake source element should be available");
+    let mut capture = GstreamerCapture::from_source_element(source)
+        .expect("the source element should link to the standard capture tail");
+
+    let sample = capture
+        .try_pull_sample(Duration::from_secs(2))
+        .expect("pulling from the source-element capture should not fail")
+        .expect("the source-element capture should produce a sample");
+    let samples = GstreamerCapture::samples_from_sample(&sample, capture.audio_info())
+        .expect("the source-element capture should produce standard samples");
+
+    assert!(!samples.is_empty());
+    capture
+        .stop()
+        .expect("the source-element capture should stop");
+}
+
+#[test]
+#[ignore = "requires a running GNOME PulseAudio/PipeWire desktop server"]
+fn desktop_microphone_source_produces_gstreamer_audio() {
+    assert_desktop_source(AudioSource::Microphone);
+}
+
+#[test]
+#[ignore = "requires a running GNOME PulseAudio/PipeWire desktop server"]
+fn desktop_system_audio_source_produces_gstreamer_audio() {
+    assert_desktop_source(AudioSource::SystemAudio);
+}
+
+fn assert_desktop_source(source: AudioSource) {
+    let mut capture = GstreamerCapture::start(source).expect("the desktop source should start");
+    let sample = capture
+        .try_pull_sample(Duration::from_secs(3))
+        .expect("pulling from the desktop source should not fail")
+        .expect("the desktop source should produce a sample");
+    let samples = GstreamerCapture::samples_from_sample(&sample, capture.audio_info())
+        .expect("the desktop source should negotiate standard audio");
+
+    assert!(!samples.is_empty());
+    capture.stop().expect("the desktop source should stop");
 }

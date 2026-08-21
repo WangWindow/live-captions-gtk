@@ -7,6 +7,7 @@ mod block;
 mod capture;
 mod device;
 mod gstreamer;
+mod source;
 
 pub use block::AudioBlockAssembler;
 pub use capture::{process_chunk, AudioCapture};
