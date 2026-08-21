@@ -24,6 +24,9 @@ cpal = { version = "0.18", default-features = false, features = [
     "pulseaudio",
 ] }
 flate2 = "1.0"
+gstreamer = "0.25"
+gstreamer-app = "0.25"
+gstreamer-audio = { version = "0.25", features = ["v1_16"] }
 gtk4 = "0.11"
 hf-hub = { version = "1", features = ["blocking"] }
 reqwest = { version = "0.12", default-features = false, features = [
