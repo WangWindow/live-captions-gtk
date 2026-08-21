@@ -5,7 +5,8 @@ use std::path::PathBuf;
 pub const APP_ID: &str = "live.captions.gtk";
 pub const APP_NAME: &str = "Live Captions";
 
-const SETTINGS_FILENAME: &str = "settings.json";
+const SETTINGS_FILENAME: &str = "settings.toml";
+const LEGACY_SETTINGS_FILENAME: &str = "settings.json";
 const APP_CONFIG_DIR: &str = "live.captions.gtk";
 const MODELS_SUBDIR: &str = "models";
 
@@ -22,11 +23,19 @@ pub fn config_dir() -> PathBuf {
 }
 
 pub fn models_dir() -> PathBuf {
-    config_dir().join(APP_CONFIG_DIR).join(MODELS_SUBDIR)
+    app_config_dir().join(MODELS_SUBDIR)
+}
+
+pub fn app_config_dir() -> PathBuf {
+    config_dir().join(APP_CONFIG_DIR)
 }
 
 pub fn settings_path() -> PathBuf {
-    config_dir().join(APP_CONFIG_DIR).join(SETTINGS_FILENAME)
+    app_config_dir().join(SETTINGS_FILENAME)
+}
+
+pub fn legacy_settings_path() -> PathBuf {
+    app_config_dir().join(LEGACY_SETTINGS_FILENAME)
 }
 
 pub fn default_model_path() -> String {
