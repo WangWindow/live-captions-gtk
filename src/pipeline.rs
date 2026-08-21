@@ -4,15 +4,24 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender, SyncSender};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use crate::asr::TranscriptionEngine;
+use crate::asr::{InferenceMetrics, InferencePolicy, PunctuationScheduler, TranscriptionEngine};
 use crate::audio::{AudioBlockAssembler, AudioSource, GstreamerCapture};
 use crate::presets::SettingsHandle;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(40);
-const CHUNK_SECS: f64 = 0.2;
 const AUDIO_QUEUE_CAPACITY: usize = 4;
+const METRICS_WINDOW: Duration = Duration::from_secs(5);
+
+struct RecognitionContext<'a> {
+    punctuator: &'a Option<sherpa_onnx::OfflinePunctuation>,
+    sample_rate: u32,
+    sender: &'a Sender<PipelineMsg>,
+    stop_flag: &'a Arc<AtomicBool>,
+    dropped_blocks: &'a std::sync::atomic::AtomicU64,
+    punctuation_interval: Duration,
+}
 
 /// 流水线状态消息
 pub enum PipelineMsg {
@@ -82,11 +91,19 @@ fn run_pipeline(
 
     let _ = sender.send(PipelineMsg::Loading);
 
+    let policy = InferencePolicy::automatic();
+    eprintln!(
+        "ASR 自动策略：线程={}，音频块={}ms，解码={}",
+        policy.num_threads,
+        policy.audio_block_duration.as_millis(),
+        policy.decoding_method,
+    );
+
     // ---- 2. 加载引擎（由模型定义驱动） ----
     let model_info = crate::presets::find_model_by_dir(&model_dir)
         .filter(|info| info.category == crate::presets::ModelCategory::Asr);
     let mut engine = match model_info {
-        Some(info) => match TranscriptionEngine::from_model(info, &model_dir) {
+        Some(info) => match TranscriptionEngine::from_model(info, &model_dir, &policy) {
             Ok(e) => e,
             Err(e) => {
                 let _ = sender.send(PipelineMsg::Error(format!("模型加载失败: {e}")));
@@ -119,6 +136,7 @@ fn run_pipeline(
     };
 
     let sample_rate = capture.audio_info().rate();
+    let block_samples = policy.audio_block_samples(sample_rate);
     let _ = sender.send(PipelineMsg::Ready);
 
     // ---- 5. 分离采集和识别线程 ----
@@ -132,7 +150,7 @@ fn run_pipeline(
         .spawn(move || {
             run_capture(
                 capture,
-                sample_rate,
+                block_samples,
                 audio_sender,
                 capture_sender,
                 capture_stop,
@@ -151,11 +169,14 @@ fn run_pipeline(
     run_recognition(
         &mut engine,
         audio_receiver,
-        &punctuator,
-        sample_rate,
-        &sender,
-        &stop_flag,
-        &dropped_blocks,
+        RecognitionContext {
+            punctuator: &punctuator,
+            sample_rate,
+            sender: &sender,
+            stop_flag: &stop_flag,
+            dropped_blocks: &dropped_blocks,
+            punctuation_interval: policy.punctuation_interval,
+        },
     );
     stop_flag.store(true, Ordering::Relaxed);
     let _ = capture_worker.join();
@@ -164,14 +185,13 @@ fn run_pipeline(
 
 fn run_capture(
     mut capture: GstreamerCapture,
-    sample_rate: u32,
+    block_samples: usize,
     sender: SyncSender<Vec<f32>>,
     pipeline_sender: Sender<PipelineMsg>,
     stop_flag: Arc<AtomicBool>,
     dropped_blocks: Arc<std::sync::atomic::AtomicU64>,
 ) {
-    let chunk = (sample_rate as f64 * CHUNK_SECS) as usize;
-    let mut blocks = AudioBlockAssembler::new(chunk.max(1));
+    let mut blocks = AudioBlockAssembler::new(block_samples);
 
     while !stop_flag.load(Ordering::Relaxed) {
         let dropped_buffers = capture.take_dropped_buffers();
@@ -222,22 +242,22 @@ fn run_capture(
 fn run_recognition(
     engine: &mut TranscriptionEngine,
     audio_receiver: Receiver<Vec<f32>>,
-    punctuator: &Option<sherpa_onnx::OfflinePunctuation>,
-    sample_rate: u32,
-    sender: &Sender<PipelineMsg>,
-    stop_flag: &Arc<AtomicBool>,
-    dropped_blocks: &std::sync::atomic::AtomicU64,
+    context: RecognitionContext<'_>,
 ) {
     let mut last_text = String::new();
     let mut observed_drops = 0;
+    let mut punctuation_scheduler = PunctuationScheduler::new(context.punctuation_interval);
+    let mut metrics = InferenceMetrics::new(METRICS_WINDOW, Instant::now());
 
-    while !stop_flag.load(Ordering::Relaxed) {
-        let drops = dropped_blocks.load(Ordering::Acquire);
+    while !context.stop_flag.load(Ordering::Relaxed) {
+        let drops = context.dropped_blocks.load(Ordering::Acquire);
         if drops != observed_drops {
+            metrics.record_drops(drops.saturating_sub(observed_drops));
             observed_drops = drops;
-            eprintln!("音频队列丢弃了 {drops} 个 buffer，重置识别流");
+            eprintln!("音频队列累计丢弃 {drops} 个 buffer，重置识别流");
             engine.reset_stream();
             last_text.clear();
+            punctuation_scheduler.reset();
             while audio_receiver.try_recv().is_ok() {}
             continue;
         }
@@ -246,46 +266,75 @@ fn run_recognition(
             Ok(samples) => samples,
             Err(mpsc::RecvTimeoutError::Timeout) => continue,
             Err(mpsc::RecvTimeoutError::Disconnected) => {
-                if !stop_flag.load(Ordering::Relaxed) {
-                    let _ = sender.send(PipelineMsg::Error("音频采集线程已退出".into()));
+                if !context.stop_flag.load(Ordering::Relaxed) {
+                    let _ = context
+                        .sender
+                        .send(PipelineMsg::Error("音频采集线程已退出".into()));
                 }
                 break;
             }
         };
 
-        let drops = dropped_blocks.load(Ordering::Acquire);
+        let drops = context.dropped_blocks.load(Ordering::Acquire);
         if drops != observed_drops {
+            metrics.record_drops(drops.saturating_sub(observed_drops));
             observed_drops = drops;
             engine.reset_stream();
             last_text.clear();
+            punctuation_scheduler.reset();
             while audio_receiver.try_recv().is_ok() {}
             continue;
         }
 
-        match engine.transcribe(&samples, sample_rate) {
+        let inference_started = Instant::now();
+        let result = engine.transcribe(&samples, context.sample_rate);
+        let endpoint = engine.is_endpoint();
+        if let Some(snapshot) = metrics.record(
+            Instant::now(),
+            Duration::from_secs_f64(samples.len() as f64 / context.sample_rate as f64),
+            inference_started.elapsed(),
+            endpoint,
+        ) {
+            eprintln!(
+                "ASR 诊断：块={}，音频={:.1}s，推理={:.1}s，实时系数={:.2}，丢块={}，端点={}",
+                snapshot.blocks,
+                snapshot.audio_duration.as_secs_f64(),
+                snapshot.inference_duration.as_secs_f64(),
+                snapshot.real_time_factor(),
+                snapshot.dropped_blocks,
+                snapshot.endpoints,
+            );
+        }
+
+        match result {
             Ok(text) => {
-                let mut trimmed = text.trim().to_string();
-                if let Some(punct) = punctuator
-                    && !trimmed.is_empty()
+                let trimmed = text.trim().to_string();
+                let mut display_text = trimmed.clone();
+                if let Some(punct) = context.punctuator
+                    && punctuation_scheduler.should_run(&trimmed, endpoint, Instant::now())
                 {
-                    trimmed = punct.add_punctuation(&trimmed).unwrap_or(trimmed);
+                    display_text = punct.add_punctuation(&trimmed).unwrap_or(trimmed.clone());
                     // 移除标点模型自动附加的结尾标点
-                    while trimmed.ends_with(['。', '，', '、', '！', '？', '.', ',', '!', '?'])
+                    while display_text.ends_with(['。', '，', '、', '！', '？', '.', ',', '!', '?'])
                     {
-                        trimmed.pop();
+                        display_text.pop();
                     }
+                    punctuation_scheduler.record(&trimmed, endpoint, Instant::now());
                 }
-                if !trimmed.is_empty() && trimmed != last_text {
-                    last_text = trimmed.clone();
-                    let _ = sender.send(PipelineMsg::Text(trimmed));
+                if !display_text.is_empty() && display_text != last_text {
+                    last_text = display_text.clone();
+                    let _ = context.sender.send(PipelineMsg::Text(display_text));
                 }
-                if engine.is_endpoint() {
+                if endpoint {
                     engine.reset_stream();
                     last_text.clear();
+                    punctuation_scheduler.reset();
                 }
             }
             Err(e) => {
-                let _ = sender.send(PipelineMsg::Error(format!("转录错误: {e}")));
+                let _ = context
+                    .sender
+                    .send(PipelineMsg::Error(format!("转录错误: {e}")));
             }
         }
     }
