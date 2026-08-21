@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use live_captions_gtk::audio::process_chunk;
+use live_captions_gtk::audio::{AudioBlockAssembler, process_chunk};
 use ringbuf::HeapRb;
 use ringbuf::traits::{Consumer, Observer, Split};
 
@@ -43,4 +43,29 @@ fn callback_processing_counts_samples_rejected_by_full_buffer() {
 
     assert_eq!(consumer.occupied_len(), 2);
     assert_eq!(dropped_samples.load(Ordering::Relaxed), 2);
+}
+
+#[test]
+fn block_assembler_emits_only_complete_fixed_size_blocks() {
+    let mut assembler = AudioBlockAssembler::new(4);
+
+    assembler.push(&[1.0, 2.0, 3.0]);
+    assert_eq!(assembler.remaining(), 1);
+    assert!(assembler.take_block().is_none());
+
+    assembler.push(&[4.0, 5.0]);
+    assert_eq!(assembler.take_block(), Some(vec![1.0, 2.0, 3.0, 4.0]));
+    assert_eq!(assembler.remaining(), 3);
+    assert!(assembler.take_block().is_none());
+}
+
+#[test]
+fn block_assembler_clear_discards_pending_audio() {
+    let mut assembler = AudioBlockAssembler::new(4);
+    assembler.push(&[1.0, 2.0, 3.0]);
+
+    assembler.clear();
+
+    assert_eq!(assembler.remaining(), 4);
+    assert!(assembler.take_block().is_none());
 }

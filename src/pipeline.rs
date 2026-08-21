@@ -7,7 +7,7 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use crate::asr::TranscriptionEngine;
-use crate::audio::{self, AudioCapture};
+use crate::audio::{self, AudioBlockAssembler, AudioCapture};
 use crate::presets::SettingsHandle;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(40);
@@ -149,14 +149,27 @@ fn run_loop(
     stop_flag: &Arc<AtomicBool>,
 ) {
     let chunk = (sample_rate as f64 * CHUNK_SECS) as usize;
+    let mut blocks = AudioBlockAssembler::new(chunk.max(1));
     let mut last_text = String::new();
     while !stop_flag.load(Ordering::Relaxed) {
-        let samples = capture.drain(chunk);
         let dropped_samples = capture.take_dropped_samples();
         if dropped_samples > 0 {
             eprintln!("音频环形缓冲区丢弃了 {dropped_samples} 个采样点");
+            capture.clear();
+            blocks.clear();
+            engine.reset_stream();
+            last_text.clear();
+            std::thread::sleep(POLL_INTERVAL);
+            continue;
         }
-        if !samples.is_empty() {
+
+        let remaining = blocks.remaining();
+        if remaining > 0 {
+            let samples = capture.drain(remaining);
+            blocks.push(&samples);
+        }
+
+        if let Some(samples) = blocks.take_block() {
             match engine.transcribe(&samples, sample_rate) {
                 Ok(text) => {
                     let mut trimmed = text.trim().to_string();

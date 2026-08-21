@@ -3,8 +3,10 @@
 //! - [`device`]：音频设备探测（麦克风 / 系统音频 monitor）
 //! - [`capture`]：从 cpal 设备捕获原始音频
 
+mod block;
 mod capture;
 mod device;
 
+pub use block::AudioBlockAssembler;
 pub use capture::{AudioCapture, process_chunk};
 pub use device::{AudioSource, resolve};
