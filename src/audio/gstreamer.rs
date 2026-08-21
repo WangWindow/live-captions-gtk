@@ -13,7 +13,7 @@ use gstreamer_app as gst_app;
 use gstreamer_audio as gst_audio;
 use gstreamer_audio::audio_buffer::Readable;
 
-use super::device::AudioSource;
+use super::source::AudioSource;
 
 const AUDIO_SINK_NAME: &str = "audio_sink";
 

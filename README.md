@@ -13,7 +13,7 @@
 ## 功能
 
 - 🎙️ **双音频源**：麦克风输入 / 系统音频输出（monitor source）
-- 🔄 **智能后端**：自动选择 PipeWire → PulseAudio → ALSA
+- 🔄 **智能后端**：通过 GStreamer 自动选择 PulseAudio monitor 或 PipeWire source
 - 🧠 **多模型支持**：Zipformer / Paraformer 流式识别
 - 🌏 **中英双语**：支持中文、英文及混合识别
 - ✏️ **自动标点**：可选 CT-Transformer 标点恢复模型
@@ -36,10 +36,13 @@
 
 ```bash
 # 安装依赖（Arch Linux）
-sudo pacman -S gtk4 libadwaita pipewire pulseaudio
+sudo pacman -S gtk4 libadwaita gstreamer gst-plugins-base gst-plugins-good \
+  gst-plugin-pipewire pipewire-pulse
 
 # 安装依赖（Ubuntu/Debian）
-sudo apt install libgtk-4-dev libadwaita-1-dev libpulse-dev libpipewire-0.3-dev libspa-0.2-dev
+sudo apt install libgtk-4-dev libadwaita-1-dev \
+  libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libpulse-dev \
+  gstreamer1.0-plugins-good gstreamer1.0-pipewire pipewire-pulse
 
 # 编译运行
 cargo run --release
@@ -52,7 +55,8 @@ cargo run --release
 ## 架构
 
 ```txt
-音频设备 (cpal) → 环形缓冲区 → ASR 引擎 (sherpa-onnx) → 标点恢复 → GTK4 字幕窗口
+GStreamer source → audioconvert/audioresample → appsink →
+固定 200ms 音频块 → ASR 引擎 (sherpa-onnx) → 标点恢复 → GTK4 字幕窗口
 ```
 
 ## 许可证
@@ -72,7 +76,8 @@ cargo run --release
 | 库 | 许可证 |
 | --- | --- |
 | [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) | Apache 2.0 |
-| [cpal](https://github.com/RustAudio/cpal) | Apache 2.0 |
+| [GStreamer](https://gstreamer.freedesktop.org/) | LGPL 2.1 |
+| [libpulse-binding](https://docs.rs/libpulse-binding/) | MIT |
 | [GTK4](https://gitlab.gnome.org/GNOME/gtk) | LGPL 2.1 |
 | [libadwaita](https://gitlab.gnome.org/GNOME/libadwaita) | LGPL 2.1 |
 | [hf-hub](https://github.com/8bitAgency/hf-hub) | MIT |

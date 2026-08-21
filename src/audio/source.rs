@@ -13,7 +13,14 @@ use pulse::context::{
 use pulse::mainloop::standard::{IterateResult, Mainloop};
 use pulse::operation::{Operation, State as OperationState};
 
-use super::device::AudioSource;
+/// 音频源类型。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AudioSource {
+    /// 物理麦克风输入。
+    Microphone,
+    /// 当前系统输出的 monitor 音频。
+    SystemAudio,
+}
 
 /// Resolve a business-level source into a configured GStreamer source element.
 pub fn resolve_gstreamer_source(source: AudioSource) -> Result<gst::Element> {

@@ -1,15 +1,12 @@
 //! 音频模块
 //!
-//! - [`device`]：音频设备探测（麦克风 / 系统音频 monitor）
-//! - [`capture`]：从 cpal 设备捕获原始音频
+//! - [`source`]：解析麦克风和系统音频的 GStreamer source
+//! - [`gstreamer`]：通过 appsink 获取标准化音频样本
 
 mod block;
-mod capture;
-mod device;
 mod gstreamer;
 mod source;
 
 pub use block::AudioBlockAssembler;
-pub use capture::{process_chunk, AudioCapture};
-pub use device::{resolve, AudioSource};
 pub use gstreamer::{standard_audio_caps, GstreamerCapture};
+pub use source::AudioSource;

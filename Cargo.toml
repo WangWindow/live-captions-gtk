@@ -19,10 +19,6 @@ strip = true        # Ensures debug symbols are removed.
 adw = { package = "libadwaita", version = "0.9", features = ["v1_5"] }
 anyhow = "1.0"
 bzip2 = "0.6"
-cpal = { version = "0.18", default-features = false, features = [
-    "pipewire",
-    "pulseaudio",
-] }
 flate2 = "1.0"
 gstreamer = "0.25"
 gstreamer-app = { version = "0.25", features = ["v1_28"] }
@@ -34,7 +30,6 @@ reqwest = { version = "0.12", default-features = false, features = [
     "blocking",
     "rustls-tls",
 ] }
-ringbuf = "0.5"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sherpa-onnx = "1.13.4"
