@@ -1,13 +1,13 @@
 //! 音频→ASR→UI 流水线控制器
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
 use crate::asr::TranscriptionEngine;
-use crate::audio::{self, AudioBlockAssembler, AudioCapture};
+use crate::audio::{AudioBlockAssembler, AudioSource, GstreamerCapture};
 use crate::presets::SettingsHandle;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(40);
@@ -106,43 +106,39 @@ fn run_pipeline(
     // ---- 3. 标点模型 ----
     let punctuator = load_punctuator(&settings);
 
-    // ---- 4. 音频设备 ----
-    let device = match get_audio_device(microphone) {
-        Ok(d) => d,
-        Err(e) => {
-            let _ = sender.send(PipelineMsg::Error(format!("音频设备错误: {e}")));
+    // ---- 4. 启动 GStreamer 音频捕获 ----
+    let source = if microphone {
+        AudioSource::Microphone
+    } else {
+        AudioSource::SystemAudio
+    };
+    let mut capture = match GstreamerCapture::start(source) {
+        Ok(capture) => capture,
+        Err(error) => {
+            let _ = sender.send(PipelineMsg::Error(format!("音频捕获失败: {error}")));
             return;
         }
     };
 
-    // ---- 5. 启动音频捕获 ----
-    let mut capture = match AudioCapture::new(&device) {
-        Ok(c) => c,
-        Err(e) => {
-            let _ = sender.send(PipelineMsg::Error(format!("音频捕获失败: {e}")));
-            return;
-        }
-    };
-
-    let device_sr = capture.sample_rate();
+    let sample_rate = capture.audio_info().rate();
     let _ = sender.send(PipelineMsg::Ready);
 
-    // ---- 6. 运行主循环 ----
+    // ---- 5. 运行主循环 ----
     run_loop(
         &mut engine,
         &mut capture,
         &punctuator,
-        device_sr,
+        sample_rate,
         &sender,
         &stop_flag,
     );
-    capture.release();
+    let _ = capture.stop();
     engine.finish();
 }
 
 fn run_loop(
     engine: &mut TranscriptionEngine,
-    capture: &mut AudioCapture,
+    capture: &mut GstreamerCapture,
     punctuator: &Option<sherpa_onnx::OfflinePunctuation>,
     sample_rate: u32,
     sender: &Sender<PipelineMsg>,
@@ -152,24 +148,37 @@ fn run_loop(
     let mut blocks = AudioBlockAssembler::new(chunk.max(1));
     let mut last_text = String::new();
     while !stop_flag.load(Ordering::Relaxed) {
-        let dropped_samples = capture.take_dropped_samples();
-        if dropped_samples > 0 {
-            eprintln!("音频环形缓冲区丢弃了 {dropped_samples} 个采样点");
-            capture.clear();
+        let dropped_buffers = capture.take_dropped_buffers();
+        if dropped_buffers > 0 {
+            eprintln!("GStreamer appsink 丢弃了 {dropped_buffers} 个音频 buffer");
             blocks.clear();
             engine.reset_stream();
             last_text.clear();
-            std::thread::sleep(POLL_INTERVAL);
             continue;
         }
 
-        let remaining = blocks.remaining();
-        if remaining > 0 {
-            let samples = capture.drain(remaining);
-            blocks.push(&samples);
-        }
+        let sample = match capture.try_pull_sample(POLL_INTERVAL) {
+            Ok(Some(sample)) => sample,
+            Ok(None) => continue,
+            Err(error) => {
+                let _ = sender.send(PipelineMsg::Error(format!(
+                    "GStreamer 音频读取失败: {error}"
+                )));
+                break;
+            }
+        };
+        let samples = match GstreamerCapture::samples_from_sample(&sample, capture.audio_info()) {
+            Ok(samples) => samples,
+            Err(error) => {
+                let _ = sender.send(PipelineMsg::Error(format!(
+                    "GStreamer 音频格式错误: {error}"
+                )));
+                break;
+            }
+        };
+        blocks.push(&samples);
 
-        if let Some(samples) = blocks.take_block() {
+        while let Some(samples) = blocks.take_block() {
             match engine.transcribe(&samples, sample_rate) {
                 Ok(text) => {
                     let mut trimmed = text.trim().to_string();
@@ -198,7 +207,6 @@ fn run_loop(
                 }
             }
         }
-        std::thread::sleep(POLL_INTERVAL);
     }
 }
 
@@ -228,13 +236,4 @@ fn load_punctuator(settings: &SettingsHandle) -> Option<sherpa_onnx::OfflinePunc
         },
     };
     sherpa_onnx::OfflinePunctuation::create(&config)
-}
-
-fn get_audio_device(microphone: bool) -> anyhow::Result<cpal::Device> {
-    let source = if microphone {
-        audio::AudioSource::Microphone
-    } else {
-        audio::AudioSource::SystemAudio
-    };
-    audio::resolve(source)
 }

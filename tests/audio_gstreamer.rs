@@ -1,10 +1,12 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use gstreamer as gst;
 use gstreamer::prelude::*;
 use gstreamer_app as gst_app;
 use gstreamer_audio as gst_audio;
-use live_captions_gtk::audio::{standard_audio_caps, AudioSource, GstreamerCapture};
+use live_captions_gtk::audio::{
+    standard_audio_caps, AudioBlockAssembler, AudioSource, GstreamerCapture,
+};
 
 struct PipelineGuard(gst::Pipeline);
 
@@ -171,6 +173,39 @@ fn source_element_builder_adds_the_standard_capture_tail() {
     capture
         .stop()
         .expect("the source-element capture should stop");
+}
+
+#[test]
+fn gstreamer_samples_feed_fixed_200ms_asr_blocks() {
+    let mut capture = GstreamerCapture::from_pipeline_description(
+        "audiotestsrc is-live=true wave=sine ! audioconvert ! audioresample ! \
+         audio/x-raw,format=F32LE,layout=interleaved,channels=1,rate=16000 ! \
+         appsink name=audio_sink sync=false max-buffers=8 drop=true",
+    )
+    .expect("the fake capture should start");
+    let mut assembler = AudioBlockAssembler::new(3_200);
+    let deadline = Instant::now() + Duration::from_secs(2);
+
+    while assembler.remaining() > 0 {
+        assert!(
+            Instant::now() < deadline,
+            "the fake source should provide one 200ms block within two seconds"
+        );
+        let sample = capture
+            .try_pull_sample(Duration::from_millis(100))
+            .expect("pulling a fake sample should not fail")
+            .expect("the fake source should provide a sample");
+        let samples = GstreamerCapture::samples_from_sample(&sample, capture.audio_info())
+            .expect("the fake sample should have the standard audio format");
+        assembler.push(&samples);
+    }
+
+    let block = assembler
+        .take_block()
+        .expect("the assembler should expose one complete ASR block");
+    assert_eq!(block.len(), 3_200);
+    assert!(block.iter().all(|sample| sample.is_finite()));
+    capture.stop().expect("the fake capture should stop");
 }
 
 #[test]
