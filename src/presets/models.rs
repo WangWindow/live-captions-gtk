@@ -33,14 +33,8 @@ pub enum ModelCategory {
 }
 
 /// 单个模型文件描述
-#[allow(dead_code)]
 pub struct ModelFile {
     pub filename: &'static str,
-    pub description: &'static str,
-    /// 用于进度显示的文件大小估算，不参与完整性校验。
-    pub estimated_size_bytes: u64,
-    /// 独立下载地址。`None` 时由 ModelInfo.hf_repo 决定来源。
-    pub download_url: Option<&'static str>,
 }
 
 /// 模型元信息
@@ -48,14 +42,12 @@ pub struct ModelInfo {
     pub name: &'static str,
     pub description: &'static str,
     pub dir_name: &'static str,
-    /// HF 仓库 ID。`None` 表示所有文件都有独立 download_url。
-    pub hf_repo: Option<&'static str>,
+    /// sherpa-onnx 官方 GitHub Release 归档地址。
+    pub archive_url: &'static str,
     /// 引擎加载方式（仅 ASR 模型有效）
     pub kind: Option<ModelKind>,
     /// 模型用途类型
     pub category: ModelCategory,
-    /// 若模型以压缩包形式发布（如 .tar.bz2），设置此 URL 下载后自动解压
-    pub archive_url: Option<&'static str>,
     pub files: &'static [ModelFile],
 }
 
@@ -69,23 +61,15 @@ impl ModelInfo {
                 .unwrap_or(false)
         })
     }
-
-    /// 返回模型文件大小估算总和，仅用于下载进度显示。
-    pub fn estimated_size_bytes(&self) -> u64 {
-        self.files
-            .iter()
-            .map(|file| file.estimated_size_bytes)
-            .sum()
-    }
 }
 
 /// ASR 识别模型列表
 pub const ASR_MODELS: &[ModelInfo] = &[
     ModelInfo {
         name: "Streaming Zipformer (中文)",
-        description: "流式 Zipformer 中文 (int8, ~160MB, 推荐)",
+        description: "流式 Zipformer 中文 (int8，推荐)",
         dir_name: "sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30",
-        hf_repo: Some("csukuangfj/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30"),
+        archive_url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30.tar.bz2",
         category: ModelCategory::Asr,
         kind: Some(ModelKind::StreamingZipformer {
             encoder: "encoder.int8.onnx",
@@ -94,64 +78,41 @@ pub const ASR_MODELS: &[ModelInfo] = &[
             tokens: "tokens.txt",
             bpe_vocab: None,
         }),
-        archive_url: None,
         files: &[
             ModelFile {
                 filename: "encoder.int8.onnx",
-                description: "编码器 (154 MB)",
-                estimated_size_bytes: 154 * 1024 * 1024,
-                download_url: None,
             },
             ModelFile {
                 filename: "decoder.onnx",
-                description: "解码器 (4.9 MB)",
-                estimated_size_bytes: 4_900_000,
-                download_url: None,
             },
             ModelFile {
                 filename: "joiner.int8.onnx",
-                description: "连接器 (1.0 MB)",
-                estimated_size_bytes: 1_000_000,
-                download_url: None,
             },
             ModelFile {
                 filename: "tokens.txt",
-                description: "词表",
-                estimated_size_bytes: 200_000,
-                download_url: None,
             },
         ],
     },
     ModelInfo {
         name: "Streaming Paraformer (中英双语)",
-        description: "流式 Paraformer 中英双语 (int8, ~226MB, 支持方言/hotwords/language_hints)",
+        description: "流式 Paraformer 中英双语 (int8，支持方言/hotwords/language_hints)",
         dir_name: "sherpa-onnx-streaming-paraformer-bilingual-zh-en",
-        hf_repo: Some("csukuangfj/sherpa-onnx-streaming-paraformer-bilingual-zh-en"),
+        archive_url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-paraformer-bilingual-zh-en.tar.bz2",
         category: ModelCategory::Asr,
         kind: Some(ModelKind::Paraformer {
             encoder: "encoder.int8.onnx",
             decoder: "decoder.int8.onnx",
             tokens: "tokens.txt",
         }),
-        archive_url: None,
         files: &[
             ModelFile {
                 filename: "encoder.int8.onnx",
-                description: "编码器 (158 MB)",
-                estimated_size_bytes: 158 * 1024 * 1024,
-                download_url: None,
             },
             ModelFile {
                 filename: "decoder.int8.onnx",
-                description: "解码器 (68 MB)",
-                estimated_size_bytes: 68 * 1024 * 1024,
-                download_url: None,
             },
             ModelFile {
                 filename: "tokens.txt",
-                description: "词表",
-                estimated_size_bytes: 200_000,
-                download_url: None,
             },
         ],
     },
@@ -160,19 +121,13 @@ pub const ASR_MODELS: &[ModelInfo] = &[
 /// 标点恢复模型列表
 pub const PUNCT_MODELS: &[ModelInfo] = &[ModelInfo {
     name: "Punctuation CT-Transformer (中英)",
-    description: "标点恢复 (int8, 72MB)，自动添加逗号句号问号",
+    description: "标点恢复 (int8)，自动添加逗号句号问号",
     dir_name: "sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8",
-    hf_repo: None,
     category: ModelCategory::Punctuation,
     kind: None,
-    archive_url: Some(
-        "https://github.com/k2-fsa/sherpa-onnx/releases/download/punctuation-models/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8.tar.bz2",
-    ),
+    archive_url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/punctuation-models/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8.tar.bz2",
     files: &[ModelFile {
         filename: "model.int8.onnx",
-        description: "标点模型 (72 MB)",
-        estimated_size_bytes: 72 * 1024 * 1024,
-        download_url: None, // 通过 archive_url 下载解压
     }],
 }];
 

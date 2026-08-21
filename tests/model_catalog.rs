@@ -4,20 +4,14 @@ use std::io::Write;
 use live_captions_gtk::presets::{ModelInfo, ASR_MODELS, PUNCT_MODELS};
 
 #[test]
-fn every_catalog_file_has_a_positive_progress_estimate() {
+fn every_catalog_file_declares_a_required_name() {
     for model in ASR_MODELS.iter().chain(PUNCT_MODELS) {
-        assert!(
-            model.estimated_size_bytes() > 0,
-            "{} has no size estimate",
-            model.name
-        );
+        assert!(model
+            .archive_url
+            .starts_with("https://github.com/k2-fsa/sherpa-onnx/releases/download/"));
+        assert!(model.archive_url.ends_with(".tar.bz2"));
         for file in model.files {
             assert!(!file.filename.is_empty());
-            assert!(
-                file.estimated_size_bytes > 0,
-                "{} has no file estimate",
-                file.filename
-            );
         }
     }
 }

@@ -67,9 +67,9 @@ GStreamer source → audioconvert/audioresample → appsink →
 
 | 模型 | 说明 |
 | -- | --- |
-| [sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30](https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30) | 流式 Zipformer 中文识别 (int8, ~160MB) |
-| [sherpa-onnx-streaming-paraformer-bilingual-zh-en](https://huggingface.co/csukuangfj/sherpa-onnx-streaming-paraformer-bilingual-zh-en) | 流式 Paraformer 中英双语识别 (int8, ~226MB) |
-| [sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8](https://github.com/k2-fsa/sherpa-onnx/releases/tag/punctuation-models) | CT-Transformer 中英标点恢复 (int8, 72MB) |
+| [sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30](https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30.tar.bz2) | 流式 Zipformer 中文识别 (int8) |
+| [sherpa-onnx-streaming-paraformer-bilingual-zh-en](https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-paraformer-bilingual-zh-en.tar.bz2) | 流式 Paraformer 中英双语识别 (int8) |
+| [sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8](https://github.com/k2-fsa/sherpa-onnx/releases/tag/punctuation-models) | CT-Transformer 中英标点恢复 (int8) |
 
 ### 使用的开源库
 
@@ -80,4 +80,3 @@ GStreamer source → audioconvert/audioresample → appsink →
 | [libpulse-binding](https://docs.rs/libpulse-binding/) | MIT |
 | [GTK4](https://gitlab.gnome.org/GNOME/gtk) | LGPL 2.1 |
 | [libadwaita](https://gitlab.gnome.org/GNOME/libadwaita) | LGPL 2.1 |
-| [hf-hub](https://github.com/8bitAgency/hf-hub) | MIT |

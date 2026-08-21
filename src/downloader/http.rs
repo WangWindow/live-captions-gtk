@@ -20,7 +20,7 @@ const BUF_SIZE: usize = 64 * 1024;
 
 /// 通过 HTTP 下载一个文件
 ///
-/// - 大文件（>50MB）自动启用多线程 Range 分块下载
+/// - 大文件（>100MB）自动启用多线程 Range 分块下载
 /// - 小文件使用单线程流式下载
 pub fn download_file(url: &str, dest: &Path, tx: &mpsc::Sender<DownloadMsg>) -> Result<(), String> {
     let client = reqwest::blocking::Client::builder()
