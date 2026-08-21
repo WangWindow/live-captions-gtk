@@ -4,7 +4,8 @@ use std::time::Duration;
 
 use adw::prelude::*;
 use adw::{ActionRow, ExpanderRow, PreferencesGroup, PreferencesPage};
-use gtk4::{glib, pango};
+use adw::gtk as gtk4;
+use adw::gtk::{glib, pango};
 
 use crate::downloader;
 use crate::presets::{self, APP_NAME, DownloadMsg, Settings, SettingsHandle};

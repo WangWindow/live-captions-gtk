@@ -1,7 +1,8 @@
 //! 主窗口 —— 浮动字幕条
 
 use adw::prelude::*;
-use gtk4::{glib, pango};
+use adw::gtk as gtk4;
+use adw::gtk::{glib, pango};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;

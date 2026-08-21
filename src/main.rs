@@ -4,8 +4,8 @@
 //! 以浮动字幕条的形式在桌面上实时显示识别文本。
 
 use adw::Application;
+use adw::glib;
 use adw::prelude::*;
-use gtk4::glib;
 use live_captions_gtk::{presets, ui};
 use std::sync::{Arc, RwLock};
 
