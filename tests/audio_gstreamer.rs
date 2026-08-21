@@ -5,7 +5,7 @@ use gstreamer::prelude::*;
 use gstreamer_app as gst_app;
 use gstreamer_audio as gst_audio;
 use live_captions_gtk::audio::{
-    standard_audio_caps, AudioBlockAssembler, AudioSource, GstreamerCapture,
+    AudioBlockAssembler, AudioSource, GstreamerCapture, standard_audio_caps,
 };
 
 struct PipelineGuard(gst::Pipeline);

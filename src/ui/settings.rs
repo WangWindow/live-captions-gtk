@@ -8,7 +8,7 @@ use adw::prelude::*;
 use adw::{ActionRow, ExpanderRow, PreferencesGroup, PreferencesPage};
 
 use crate::downloader;
-use crate::presets::{self, DownloadMsg, Settings, SettingsHandle, APP_NAME};
+use crate::presets::{self, APP_NAME, DownloadMsg, Settings, SettingsHandle};
 
 pub type OnChanged = Rc<dyn Fn()>;
 
@@ -21,11 +21,11 @@ impl SettingsWindow {
         settings: SettingsHandle,
         on_changed: OnChanged,
     ) {
-        if let Some(win) = existing {
-            if win.is_visible() {
-                win.present();
-                return;
-            }
+        if let Some(win) = existing
+            && win.is_visible()
+        {
+            win.present();
+            return;
         }
 
         let window = adw::Window::builder()
@@ -514,27 +514,27 @@ fn populate_model_list(list_box: &gtk4::ListBox, settings: SettingsHandle, win: 
         info.append(&sl);
         row_box.append(&info);
 
-        if let Some(model) = model {
-            if model.category == presets::ModelCategory::Asr {
-                let cb = gtk4::CheckButton::new();
-                cb.set_active(path_str == current_asr);
-                cb.set_valign(gtk4::Align::Center);
-                let s = settings.clone();
-                let lb = list_box.clone();
-                let ps = path_str.clone();
-                let w = win.clone();
-                cb.connect_toggled(move |this| {
-                    if !this.is_active() {
-                        return;
-                    }
-                    let mut guard = s.write().unwrap();
-                    guard.model_path = ps.clone();
-                    let _ = guard.save();
-                    drop(guard);
-                    populate_model_list(&lb, s.clone(), &w);
-                });
-                row_box.prepend(&cb);
-            }
+        if let Some(model) = model
+            && model.category == presets::ModelCategory::Asr
+        {
+            let cb = gtk4::CheckButton::new();
+            cb.set_active(path_str == current_asr);
+            cb.set_valign(gtk4::Align::Center);
+            let s = settings.clone();
+            let lb = list_box.clone();
+            let ps = path_str.clone();
+            let w = win.clone();
+            cb.connect_toggled(move |this| {
+                if !this.is_active() {
+                    return;
+                }
+                let mut guard = s.write().unwrap();
+                guard.model_path = ps.clone();
+                let _ = guard.save();
+                drop(guard);
+                populate_model_list(&lb, s.clone(), &w);
+            });
+            row_box.prepend(&cb);
         }
 
         let del = gtk4::Button::from_icon_name("user-trash-symbolic");
@@ -592,7 +592,7 @@ fn show_delete_confirm(
 ) {
     let dialog = adw::AlertDialog::builder()
         .heading("删除模型")
-        .body(&format!("确定要删除 \"{name}\" 吗？\n\n{path}"))
+        .body(format!("确定要删除 \"{name}\" 吗？\n\n{path}"))
         .close_response("cancel")
         .build();
     dialog.add_response("cancel", "取消");
@@ -633,8 +633,9 @@ fn open_import_dialog(settings: SettingsHandle, list_box: gtk4::ListBox, parent:
     let lb = list_box;
     let pw = parent.clone();
     dialog.connect_response(move |d, resp| {
-        if resp == gtk4::ResponseType::Accept {
-            if let Some(path) = d.file().and_then(|f| f.path()) {
+        if resp == gtk4::ResponseType::Accept
+            && let Some(path) = d.file().and_then(|f| f.path())
+        {
                 let ps = path.to_string_lossy().into_owned();
                 let Some(model) = presets::find_model_by_dir(&path) else {
                     let err_dialog = adw::AlertDialog::builder()
@@ -656,7 +657,6 @@ fn open_import_dialog(settings: SettingsHandle, list_box: gtk4::ListBox, parent:
                 let _ = guard.save();
                 drop(guard);
                 populate_model_list(&lb, s.clone(), &pw);
-            }
         }
     });
     dialog.show();

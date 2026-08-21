@@ -6,7 +6,7 @@
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{mpsc, Arc};
+use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
 use crate::presets::DownloadMsg;
@@ -153,7 +153,12 @@ fn download_multithreaded(
         match std::thread::Builder::new()
             .name(format!("dl-part-{i}"))
             .spawn(move || {
-                let result = download_range(&client, &url, &part, start, end, total, &acc, &tx);
+                let progress = ProgressContext {
+                    total,
+                    acc: &acc,
+                    tx: &tx,
+                };
+                let result = download_range(&client, &url, &part, start, end, &progress);
                 let _ = done_tx.send(result);
             }) {
             Ok(handle) => handles.push(handle),
@@ -202,15 +207,19 @@ fn download_multithreaded(
     Ok(())
 }
 
+struct ProgressContext<'a> {
+    total: u64,
+    acc: &'a AtomicU64,
+    tx: &'a mpsc::Sender<DownloadMsg>,
+}
+
 fn download_range(
     client: &reqwest::blocking::Client,
     url: &str,
     part: &Path,
     start: u64,
     end: u64,
-    total: u64,
-    acc: &AtomicU64,
-    tx: &mpsc::Sender<DownloadMsg>,
+    progress: &ProgressContext<'_>,
 ) -> Result<(), String> {
     let range = format!("bytes={start}-{end}");
     let resp = request_with_retry(|| {
@@ -230,7 +239,7 @@ fn download_range(
     let mut body = resp;
     let mut buf = vec![0u8; BUF_SIZE];
     let mut written = 0u64;
-    let mut last_report = acc.load(Ordering::Relaxed);
+    let mut last_report = progress.acc.load(Ordering::Relaxed);
 
     loop {
         let n = body
@@ -242,8 +251,14 @@ fn download_range(
         file.write_all(&buf[..n])
             .map_err(|e| format!("写入分片失败: {e}"))?;
         written += n as u64;
-        acc.fetch_add(n as u64, Ordering::Relaxed);
-        report_progress(acc, total, &mut last_report, tx, false);
+        progress.acc.fetch_add(n as u64, Ordering::Relaxed);
+        report_progress(
+            progress.acc,
+            progress.total,
+            &mut last_report,
+            progress.tx,
+            false,
+        );
     }
     file.flush().map_err(|e| format!("刷新分片失败: {e}"))?;
     if written != expected {
@@ -340,16 +355,16 @@ fn retry_sleep(attempt: usize) {
 }
 
 fn probe_file_size(client: &reqwest::blocking::Client, url: &str) -> Result<(u64, bool), String> {
-    if let Ok(response) = request_with_retry(|| client.head(url).send()) {
-        if let Ok(total) = get_content_length(response.headers()) {
-            let accepts_ranges = response
-                .headers()
-                .get(reqwest::header::ACCEPT_RANGES)
-                .and_then(|value| value.to_str().ok())
-                .map(|value| value.contains("bytes"))
-                .unwrap_or(false);
-            return Ok((total, accepts_ranges));
-        }
+    if let Ok(response) = request_with_retry(|| client.head(url).send())
+        && let Ok(total) = get_content_length(response.headers())
+    {
+        let accepts_ranges = response
+            .headers()
+            .get(reqwest::header::ACCEPT_RANGES)
+            .and_then(|value| value.to_str().ok())
+            .map(|value| value.contains("bytes"))
+            .unwrap_or(false);
+        return Ok((total, accepts_ranges));
     }
 
     probe_via_range(client, url)

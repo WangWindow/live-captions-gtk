@@ -20,10 +20,12 @@ fn settings_round_trip_uses_toml_and_atomic_target() {
     fs::create_dir_all(&root).expect("the temporary settings directory should be created");
     let path = root.join("settings.toml");
 
-    let mut settings = Settings::default();
-    settings.language = "zh".into();
-    settings.line_width = 72;
-    settings.installed_models = vec!["/models/zipformer".into()];
+    let settings = Settings {
+        language: "zh".into(),
+        line_width: 72,
+        installed_models: vec!["/models/zipformer".into()],
+        ..Settings::default()
+    };
     settings.save_to(&path).expect("settings should be saved");
 
     let content = fs::read_to_string(&path).expect("the TOML file should be readable");
@@ -61,9 +63,11 @@ fn legacy_json_is_migrated_and_retained_as_backup() {
     assert!(!loaded.auto_punctuation);
     assert!(path.exists());
     assert!(legacy_path.exists());
-    assert!(fs::read_to_string(&path)
-        .expect("the migrated TOML file should be readable")
-        .contains("language = \"en\""));
+    assert!(
+        fs::read_to_string(&path)
+            .expect("the migrated TOML file should be readable")
+            .contains("language = \"en\"")
+    );
 
     fs::remove_dir_all(&root).expect("the temporary settings directory should be removed");
 }

@@ -2,15 +2,17 @@ use std::fs;
 use std::io::Write;
 
 use live_captions_gtk::presets::{
-    find_model_by_dir, ModelCategory, ModelInfo, ASR_MODELS, PUNCT_MODELS,
+    ASR_MODELS, ModelCategory, ModelInfo, PUNCT_MODELS, find_model_by_dir,
 };
 
 #[test]
 fn every_catalog_file_declares_a_required_name() {
     for model in ASR_MODELS.iter().chain(PUNCT_MODELS) {
-        assert!(model
-            .archive_url
-            .starts_with("https://github.com/k2-fsa/sherpa-onnx/releases/download/"));
+        assert!(
+            model
+                .archive_url
+                .starts_with("https://github.com/k2-fsa/sherpa-onnx/releases/download/")
+        );
         assert!(model.archive_url.ends_with(".tar.bz2"));
         for file in model.files {
             assert!(!file.filename.is_empty());

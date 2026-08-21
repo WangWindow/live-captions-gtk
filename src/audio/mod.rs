@@ -8,5 +8,5 @@ mod gstreamer;
 mod source;
 
 pub use block::AudioBlockAssembler;
-pub use gstreamer::{standard_audio_caps, GstreamerCapture};
+pub use gstreamer::{GstreamerCapture, standard_audio_caps};
 pub use source::AudioSource;

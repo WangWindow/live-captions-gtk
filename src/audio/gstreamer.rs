@@ -6,7 +6,7 @@
 
 use std::time::Duration;
 
-use anyhow::{anyhow, ensure, Context, Result};
+use anyhow::{Context, Result, anyhow, ensure};
 use gstreamer as gst;
 use gstreamer::prelude::*;
 use gstreamer_app as gst_app;
@@ -169,13 +169,13 @@ impl GstreamerCapture {
         let plane = audio_buffer
             .plane_data(0)
             .context("无法读取 GStreamer 音频 plane")?;
-        let mut chunks = plane.chunks_exact(std::mem::size_of::<f32>());
+        let (chunks, remainder) = plane.as_chunks::<{ std::mem::size_of::<f32>() }>();
         let samples = chunks
-            .by_ref()
-            .map(|bytes| f32::from_le_bytes(bytes.try_into().expect("chunk size is four")))
+            .iter()
+            .map(|bytes| f32::from_le_bytes(*bytes))
             .collect();
         ensure!(
-            chunks.remainder().is_empty(),
+            remainder.is_empty(),
             "GStreamer F32LE 音频 buffer 长度不是完整 f32 样本"
         );
 

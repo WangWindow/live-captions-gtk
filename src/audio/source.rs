@@ -3,7 +3,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use gstreamer as gst;
 use libpulse_binding as pulse;
 use pulse::callbacks::ListResult;

@@ -1,8 +1,8 @@
 //! 主窗口 —— 浮动字幕条
 
-use adw::prelude::*;
 use adw::gtk as gtk4;
 use adw::gtk::{glib, pango};
+use adw::prelude::*;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -34,7 +34,7 @@ impl CaptionWindow {
     pub fn build(app: &gtk4::Application, settings: SettingsHandle) -> Self {
         let line_width = {
             let s = settings.read().unwrap_or_else(|e| e.into_inner());
-            s.line_width.max(10).min(200)
+            s.line_width.clamp(10, 200)
         };
 
         // ---- 窗口 ----
@@ -178,7 +178,7 @@ impl CaptionWindow {
                     s.use_microphone
                 };
                 btn.set_icon_name("media-playback-stop-symbolic");
-                btn.set_tooltip_text(Some(if mic { "停止" } else { "停止" }));
+                btn.set_tooltip_text(Some("停止"));
                 stack_ref.set_visible_child_name("listening");
                 *listening = true;
 
@@ -272,7 +272,7 @@ impl CaptionWindow {
                 apply_font_to_label(&label, &st.font_name);
                 apply_font_to_label(&cb, &st.font_name);
                 apply_font_to_label(&ll, &st.font_name);
-                apply_pango_measurement(&label, &win, st.line_width.max(10).min(200));
+                apply_pango_measurement(&label, &win, st.line_width.clamp(10, 200));
 
                 // 如果正在监听，切设置后停止流水线（下次启动用新配置）
                 if *ls.borrow() {
@@ -291,7 +291,7 @@ impl CaptionWindow {
             });
 
             crate::ui::settings::SettingsWindow::show(
-                &mut *sw_settings_win.borrow_mut(),
+                &mut sw_settings_win.borrow_mut(),
                 sw_window.upcast_ref(),
                 sw_settings.clone(),
                 on_changed,
@@ -322,7 +322,7 @@ impl CaptionWindow {
             apply_font_to_label(&slf._caption_a, &s.font_name);
             apply_font_to_label(&slf._caption_b, &s.font_name);
             apply_font_to_label(&slf._listening_label, &s.font_name);
-            apply_pango_measurement(&slf._caption_a, &slf.window, s.line_width.max(10).min(200));
+            apply_pango_measurement(&slf._caption_a, &slf.window, s.line_width.clamp(10, 200));
         }
 
         slf
@@ -357,9 +357,7 @@ fn apply_pango_measurement(
     window: &gtk4::ApplicationWindow,
     line_width: i32,
 ) {
-    let measure_text: String = std::iter::repeat(MEASURE_CHAR)
-        .take(line_width as usize)
-        .collect();
+    let measure_text: String = std::iter::repeat_n(MEASURE_CHAR, line_width as usize).collect();
     let layout = caption_label.create_pango_layout(Some(&measure_text));
     let (caption_w, line_h) = layout.pixel_size();
     let caption_height = line_h * 2 + 4;

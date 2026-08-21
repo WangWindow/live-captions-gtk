@@ -1,8 +1,8 @@
 //! 音频→ASR→UI 流水线控制器
 
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender, SyncSender};
-use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
@@ -265,14 +265,14 @@ fn run_recognition(
         match engine.transcribe(&samples, sample_rate) {
             Ok(text) => {
                 let mut trimmed = text.trim().to_string();
-                if let Some(punct) = punctuator {
-                    if !trimmed.is_empty() {
-                        trimmed = punct.add_punctuation(&trimmed).unwrap_or(trimmed);
-                        // 移除标点模型自动附加的结尾标点
-                        while trimmed.ends_with(['。', '，', '、', '！', '？', '.', ',', '!', '?'])
-                        {
-                            trimmed.pop();
-                        }
+                if let Some(punct) = punctuator
+                    && !trimmed.is_empty()
+                {
+                    trimmed = punct.add_punctuation(&trimmed).unwrap_or(trimmed);
+                    // 移除标点模型自动附加的结尾标点
+                    while trimmed.ends_with(['。', '，', '、', '！', '？', '.', ',', '!', '?'])
+                    {
+                        trimmed.pop();
                     }
                 }
                 if !trimmed.is_empty() && trimmed != last_text {
