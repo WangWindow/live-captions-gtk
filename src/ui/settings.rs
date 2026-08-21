@@ -282,13 +282,7 @@ fn download_done(
 }
 
 fn build_source_row(settings: &SettingsHandle, on_changed: &OnChanged) -> ActionRow {
-    let row = ActionRow::builder()
-        .title("音频源")
-        .subtitle("系统音频 / 麦克风")
-        .build();
-    row.add_prefix(&gtk4::Image::from_icon_name(
-        "audio-input-microphone-symbolic",
-    ));
+    let row = ActionRow::builder().title("音频源").build();
 
     let current = settings.read().unwrap();
     let model = gtk4::StringList::new(&["系统音频", "麦克风"]);
@@ -299,18 +293,11 @@ fn build_source_row(settings: &SettingsHandle, on_changed: &OnChanged) -> Action
     drop(current);
 
     let row_suffix = row.clone();
-    let row_subtitle = row.clone();
     let s = settings.clone();
     let cb = on_changed.clone();
     dd.connect_selected_notify(move |dd| {
         let mut s = s.write().unwrap();
         s.use_microphone = dd.selected() == 1;
-        let label = if s.use_microphone {
-            "麦克风"
-        } else {
-            "系统音频"
-        };
-        row_subtitle.set_subtitle(&format!("当前: {label}"));
         let _ = s.save();
         drop(s);
         cb();
@@ -322,13 +309,7 @@ fn build_source_row(settings: &SettingsHandle, on_changed: &OnChanged) -> Action
 }
 
 fn build_language_row(settings: &SettingsHandle, on_changed: &OnChanged) -> ActionRow {
-    let row = ActionRow::builder()
-        .title("识别语言")
-        .subtitle("自动 / 简体中文 / English")
-        .build();
-    row.add_prefix(&gtk4::Image::from_icon_name(
-        "format-text-direction-ltr-symbolic",
-    ));
+    let row = ActionRow::builder().title("识别语言").build();
 
     let current = settings.read().unwrap();
     let model = gtk4::StringList::new(&["自动检测", "简体中文", "English"]);
@@ -358,11 +339,7 @@ fn build_language_row(settings: &SettingsHandle, on_changed: &OnChanged) -> Acti
 }
 
 fn build_font_row(settings: &SettingsHandle, on_changed: &OnChanged) -> ActionRow {
-    let row = ActionRow::builder()
-        .title("字体")
-        .subtitle("字幕字体与字号")
-        .build();
-    row.add_prefix(&gtk4::Image::from_icon_name("format-text-bold-symbolic"));
+    let row = ActionRow::builder().title("字体").build();
 
     let current = settings.read().unwrap();
     let btn = gtk4::FontButton::builder()
@@ -388,11 +365,7 @@ fn build_font_row(settings: &SettingsHandle, on_changed: &OnChanged) -> ActionRo
 }
 
 fn build_line_width_row(settings: &SettingsHandle, on_changed: &OnChanged) -> ActionRow {
-    let row = ActionRow::builder()
-        .title("窗口宽度")
-        .subtitle("字幕每行字符数")
-        .build();
-    row.add_prefix(&gtk4::Image::from_icon_name("view-fullscreen-symbolic"));
+    let row = ActionRow::builder().title("窗口宽度").build();
 
     let current = settings.read().unwrap();
     let adj = gtk4::Adjustment::new(current.line_width as f64, 20.0, 140.0, 5.0, 10.0, 0.0);
@@ -421,11 +394,7 @@ fn build_line_width_row(settings: &SettingsHandle, on_changed: &OnChanged) -> Ac
 }
 
 fn build_punctuation_row(settings: &SettingsHandle, on_changed: &OnChanged) -> ActionRow {
-    let row = ActionRow::builder()
-        .title("自动标点")
-        .subtitle("自动添加标点")
-        .build();
-    row.add_prefix(&gtk4::Image::from_icon_name("document-edit-symbolic"));
+    let row = ActionRow::builder().title("自动标点").build();
 
     let current = settings.read().unwrap();
     let sw = gtk4::Switch::builder()
