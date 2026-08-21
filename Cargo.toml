@@ -5,6 +5,16 @@ edition = "2024"
 description = "实时语音转字幕桌面应用 —— 基于 sherpa-onnx 和 libadwaita"
 license = "MIT"
 
+[profile.dev]
+incremental = true  # Compile your binary in smaller steps.
+
+[profile.release]
+codegen-units = 1   # Allows LLVM to perform better optimization.
+lto = true          # Enables link-time-optimizations.
+opt-level = "s"     # Prioritizes small binary size. Use `3` if you prefer speed.
+panic = "abort"     # Higher performance by disabling panic handlers.
+strip = true        # Ensures debug symbols are removed.
+
 [dependencies]
 adw = { package = "libadwaita", version = "0.9", features = ["v1_5"] }
 anyhow = "1.0"
@@ -27,7 +37,3 @@ sherpa-onnx = "1.13.4"
 tar = "0.4"
 xz2 = "0.1"
 zip = { version = "8", default-features = false, features = ["deflate"] }
-
-[profile.release]
-opt-level = 2
-lto = "thin"
