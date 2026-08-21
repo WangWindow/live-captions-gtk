@@ -82,11 +82,8 @@ fn run_pipeline(
     let _ = sender.send(PipelineMsg::Loading);
 
     // ---- 2. 加载引擎（由模型定义驱动） ----
-    // 遍历 MODELS 找到匹配的模型定义
-    let model_info = crate::presets::ASR_MODELS.iter().find(|m| {
-        let p = std::path::Path::new(&m.dir_name);
-        model_dir.ends_with(&m.dir_name) || model_dir.ends_with(p)
-    });
+    let model_info = crate::presets::find_model_by_dir(&model_dir)
+        .filter(|info| info.category == crate::presets::ModelCategory::Asr);
     let mut engine = match model_info {
         Some(info) => match TranscriptionEngine::from_model(info, &model_dir) {
             Ok(e) => e,

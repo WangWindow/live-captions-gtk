@@ -63,6 +63,16 @@ impl ModelInfo {
     }
 }
 
+/// 返回所有内置模型定义，供下载、导入和运行时识别共用。
+pub fn all_models() -> impl Iterator<Item = &'static ModelInfo> {
+    ASR_MODELS.iter().chain(PUNCT_MODELS.iter())
+}
+
+/// 根据目录中实际存在的完整文件识别内置模型。
+pub fn find_model_by_dir(model_dir: &Path) -> Option<&'static ModelInfo> {
+    all_models().find(|model| model.is_complete(model_dir))
+}
+
 /// ASR 识别模型列表
 pub const ASR_MODELS: &[ModelInfo] = &[
     ModelInfo {

@@ -1,7 +1,9 @@
 use std::fs;
 use std::io::Write;
 
-use live_captions_gtk::presets::{ModelInfo, ASR_MODELS, PUNCT_MODELS};
+use live_captions_gtk::presets::{
+    find_model_by_dir, ModelCategory, ModelInfo, ASR_MODELS, PUNCT_MODELS,
+};
 
 #[test]
 fn every_catalog_file_declares_a_required_name() {
@@ -35,6 +37,10 @@ fn model_completion_requires_all_non_empty_files() {
             .expect("the model file should become non-empty");
     }
     assert!(model.is_complete(&root));
+    assert_eq!(
+        find_model_by_dir(&root).map(|model| model.category),
+        Some(ModelCategory::Asr)
+    );
 
     fs::remove_dir_all(&root).expect("the temporary model directory should be removed");
 }

@@ -100,46 +100,24 @@ impl SettingsWindow {
 
         // ASR 模型
         for model_info in presets::ASR_MODELS {
-            let row = ActionRow::builder()
-                .title(model_info.name)
-                .subtitle(model_info.description)
-                .build();
-            let btn = gtk4::Button::with_label("下载");
-            btn.set_valign(gtk4::Align::Center);
-            {
-                let exp = asr_expander.clone();
-                let s = settings.clone();
-                let lb = list_box.clone();
-                let w = window.clone();
-                btn.connect_clicked(move |_| {
-                    start_download(model_info, &exp, s.clone(), lb.clone(), &w)
-                });
-            }
-            row.add_suffix(&btn);
-            asr_expander.add_row(&row);
+            asr_expander.add_row(&build_download_row(
+                model_info,
+                settings.clone(),
+                list_box.clone(),
+                window.clone(),
+            ));
         }
         dl.add(&asr_expander);
 
         // 标点模型
         let punct_expander = ExpanderRow::builder().title("标点模型").build();
         for model_info in presets::PUNCT_MODELS {
-            let row = ActionRow::builder()
-                .title(model_info.name)
-                .subtitle(model_info.description)
-                .build();
-            let btn = gtk4::Button::with_label("下载");
-            btn.set_valign(gtk4::Align::Center);
-            {
-                let exp = punct_expander.clone();
-                let s = settings.clone();
-                let lb = list_box.clone();
-                let w = window.clone();
-                btn.connect_clicked(move |_| {
-                    start_download(model_info, &exp, s.clone(), lb.clone(), &w)
-                });
-            }
-            row.add_suffix(&btn);
-            punct_expander.add_row(&row);
+            punct_expander.add_row(&build_download_row(
+                model_info,
+                settings.clone(),
+                list_box.clone(),
+                window.clone(),
+            ));
         }
         dl.add(&punct_expander);
         model_page.add(&dl);
@@ -151,21 +129,52 @@ impl SettingsWindow {
     }
 }
 
+fn build_download_row(
+    model_info: &'static presets::ModelInfo,
+    settings: SettingsHandle,
+    list_box: gtk4::ListBox,
+    window: adw::Window,
+) -> ActionRow {
+    let row = ActionRow::builder()
+        .title(model_info.name)
+        .subtitle(model_info.description)
+        .build();
+    let button = gtk4::Button::with_label("下载");
+    button.set_valign(gtk4::Align::Center);
+    let download_row = row.clone();
+    let download_button = button.clone();
+    button.connect_clicked(move |_| {
+        start_download(
+            model_info,
+            &download_row,
+            &download_button,
+            settings.clone(),
+            list_box.clone(),
+            &window,
+        );
+    });
+    row.add_suffix(&button);
+    row
+}
+
 fn start_download(
     model_info: &'static presets::ModelInfo,
-    expander: &ExpanderRow,
+    row: &ActionRow,
+    button: &gtk4::Button,
     settings: SettingsHandle,
     list_box: gtk4::ListBox,
     window: &adw::Window,
 ) {
-    expander.set_subtitle(&format!("正在下载 {}…", model_info.name));
-    expander.set_sensitive(false);
+    row.set_subtitle(&format!("正在下载 {}…", model_info.name));
+    button.set_label("下载中…");
+    button.set_sensitive(false);
 
     let dir = match Settings::ensure_models_dir() {
         Ok(d) => d,
         Err(e) => {
-            expander.set_subtitle(&format!("错误: {e}"));
-            expander.set_sensitive(true);
+            row.set_subtitle(&format!("错误: {e}"));
+            button.set_label("重试");
+            button.set_sensitive(true);
             return;
         }
     };
@@ -174,8 +183,9 @@ fn start_download(
     // 检查是否已完整下载
     let all_exist = model_info.is_complete(&model_dir);
     if all_exist {
-        expander.set_subtitle("模型已存在 ✓");
-        expander.set_sensitive(true);
+        row.set_subtitle("模型已存在 ✓");
+        button.set_label("已安装");
+        button.set_sensitive(true);
         download_done(
             model_dir.to_string_lossy().into_owned(),
             &settings,
@@ -190,7 +200,8 @@ fn start_download(
     let d = dir.clone();
     std::thread::spawn(move || downloader::download_model(model_info, &d, &tx));
 
-    let exp = expander.clone();
+    let row = row.clone();
+    let button = button.clone();
     let s = settings.clone();
     let lb = list_box.clone();
     let w = window.clone();
@@ -207,24 +218,27 @@ fn start_download(
             } else {
                 format!("{} ({} MB)", name, downloaded / 1_048_576)
             };
-            exp.set_subtitle(&text);
+            row.set_subtitle(&text);
             glib::ControlFlow::Continue
         }
         Ok(DownloadMsg::Done(path)) => {
-            exp.set_subtitle("下载完成 ✓");
-            exp.set_sensitive(true);
+            row.set_subtitle("下载完成 ✓");
+            button.set_label("已安装");
+            button.set_sensitive(true);
             download_done(path, &s, &lb, &w, cat);
             glib::ControlFlow::Break
         }
         Ok(DownloadMsg::Error(e)) => {
-            exp.set_subtitle(&format!("失败: {e}"));
-            exp.set_sensitive(true);
+            row.set_subtitle(&format!("失败: {e}"));
+            button.set_label("重试");
+            button.set_sensitive(true);
             glib::ControlFlow::Break
         }
         Err(mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
         Err(mpsc::TryRecvError::Disconnected) => {
-            exp.set_subtitle("下载中断");
-            exp.set_sensitive(true);
+            row.set_subtitle("下载中断");
+            button.set_label("重试");
+            button.set_sensitive(true);
             glib::ControlFlow::Break
         }
     });
@@ -240,7 +254,10 @@ fn download_done(
     match category {
         presets::ModelCategory::Punctuation => {
             let mut guard = settings.write().unwrap();
-            guard.punct_model_path = path;
+            guard.punct_model_path = path.clone();
+            if !guard.installed_models.contains(&path) {
+                guard.installed_models.push(path.clone());
+            }
             let _ = guard.save();
         }
         _ => {
@@ -431,20 +448,18 @@ fn populate_model_list(list_box: &gtk4::ListBox, settings: SettingsHandle, win: 
     }
 
     let s = settings.read().unwrap();
-    let current = s.model_path.clone();
-    let installed = s.installed_models.clone();
+    let current_asr = s.model_path.clone();
+    let current_punct = s.punct_model_path.clone();
+    let installed = model_paths(&s);
     drop(s);
 
     for path in &installed {
         let p = std::path::Path::new(path);
-        let path_str = path.to_string();
-
-        // 自动检测模型类型
-        let (is_valid, model_label) = detect_model_type(&p);
-
-        let name = p
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
+        let path_str = path.clone();
+        let model = presets::find_model_by_dir(p);
+        let name = model
+            .map(|model| model.name.to_string())
+            .or_else(|| p.file_name().map(|n| n.to_string_lossy().into_owned()))
             .unwrap_or_else(|| path_str.clone());
 
         let row_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
@@ -453,10 +468,22 @@ fn populate_model_list(list_box: &gtk4::ListBox, settings: SettingsHandle, win: 
         row_box.set_margin_top(6);
         row_box.set_margin_bottom(6);
 
-        let cb = gtk4::CheckButton::new();
-        cb.set_active(*path == current);
-        cb.set_valign(gtk4::Align::Center);
-        row_box.append(&cb);
+        if let Some(info) = model {
+            let marker = gtk4::Label::new(Some(match info.category {
+                presets::ModelCategory::Asr => "ASR",
+                presets::ModelCategory::Punctuation => "标点",
+            }));
+            marker.set_width_chars(5);
+            marker.set_xalign(0.5);
+            marker.add_css_class("dim-label");
+            row_box.append(&marker);
+        } else {
+            let marker = gtk4::Label::new(Some("未知"));
+            marker.set_width_chars(5);
+            marker.set_xalign(0.5);
+            marker.add_css_class("error");
+            row_box.append(&marker);
+        }
 
         let info = gtk4::Box::new(gtk4::Orientation::Vertical, 2);
         info.set_valign(gtk4::Align::Center);
@@ -464,13 +491,22 @@ fn populate_model_list(list_box: &gtk4::ListBox, settings: SettingsHandle, win: 
         let nl = gtk4::Label::new(Some(&name));
         nl.set_halign(gtk4::Align::Start);
         nl.set_xalign(0.0);
+        nl.set_tooltip_text(Some(&path_str));
 
-        let subtitle = if is_valid {
-            model_label
+        let subtitle = if let Some(model) = model {
+            match model.category {
+                presets::ModelCategory::Asr if current_asr == path_str => {
+                    format!("{} · 当前使用", model.description)
+                }
+                presets::ModelCategory::Punctuation if current_punct == path_str => {
+                    format!("{} · 当前使用", model.description)
+                }
+                _ => model.description.to_string(),
+            }
         } else {
-            "目录中未找到模型文件 (需要 model.int8.onnx 或 encoder-*.int8.onnx)"
+            "目录不完整或不是内置模型，无法用于当前引擎".to_string()
         };
-        let sl = gtk4::Label::new(Some(subtitle));
+        let sl = gtk4::Label::new(Some(&subtitle));
         sl.set_halign(gtk4::Align::Start);
         sl.set_xalign(0.0);
         sl.add_css_class("dim-label");
@@ -478,28 +514,42 @@ fn populate_model_list(list_box: &gtk4::ListBox, settings: SettingsHandle, win: 
         info.append(&sl);
         row_box.append(&info);
 
+        if let Some(model) = model {
+            if model.category == presets::ModelCategory::Asr {
+                let cb = gtk4::CheckButton::new();
+                cb.set_active(path_str == current_asr);
+                cb.set_valign(gtk4::Align::Center);
+                let s = settings.clone();
+                let lb = list_box.clone();
+                let ps = path_str.clone();
+                let w = win.clone();
+                cb.connect_toggled(move |this| {
+                    if !this.is_active() {
+                        return;
+                    }
+                    let mut guard = s.write().unwrap();
+                    guard.model_path = ps.clone();
+                    let _ = guard.save();
+                    drop(guard);
+                    populate_model_list(&lb, s.clone(), &w);
+                });
+                row_box.prepend(&cb);
+            }
+        }
+
         let del = gtk4::Button::from_icon_name("user-trash-symbolic");
         del.set_has_frame(false);
         del.set_valign(gtk4::Align::Center);
         del.set_tooltip_text(Some("删除此模型"));
-        row_box.append(&del);
-
-        {
-            let s = settings.clone();
-            let lb = list_box.clone();
-            let ps = path_str.clone();
-            let w = win.clone();
-            cb.connect_toggled(move |this| {
-                if !this.is_active() {
-                    return;
-                }
-                let mut guard = s.write().unwrap();
-                guard.model_path = ps.clone();
-                let _ = guard.save();
-                drop(guard);
-                populate_model_list(&lb, s.clone(), &w);
-            });
+        let is_active = model.is_some_and(|model| match model.category {
+            presets::ModelCategory::Asr => current_asr == path_str,
+            presets::ModelCategory::Punctuation => current_punct == path_str,
+        });
+        if is_active {
+            del.set_sensitive(false);
+            del.set_tooltip_text(Some("当前使用中的模型，请先切换后再删除"));
         }
+        row_box.append(&del);
 
         {
             let s = settings.clone();
@@ -512,6 +562,25 @@ fn populate_model_list(list_box: &gtk4::ListBox, settings: SettingsHandle, win: 
 
         list_box.append(&row_box);
     }
+}
+
+fn model_paths(settings: &Settings) -> Vec<String> {
+    let mut paths = settings.installed_models.clone();
+    if !settings.punct_model_path.is_empty() && !paths.contains(&settings.punct_model_path) {
+        paths.push(settings.punct_model_path.clone());
+    }
+
+    let models_dir = Settings::models_dir();
+    for model in presets::all_models() {
+        let path = models_dir.join(model.dir_name);
+        if model.is_complete(&path) {
+            let path = path.to_string_lossy().into_owned();
+            if !paths.contains(&path) {
+                paths.push(path);
+            }
+        }
+    }
+    paths
 }
 
 fn show_delete_confirm(
@@ -541,6 +610,9 @@ fn show_delete_confirm(
             if guard.model_path == ps {
                 guard.model_path.clear();
             }
+            if guard.punct_model_path == ps {
+                guard.punct_model_path.clear();
+            }
             let _ = guard.save();
             drop(guard);
             let _ = std::fs::remove_dir_all(&ps);
@@ -564,38 +636,28 @@ fn open_import_dialog(settings: SettingsHandle, list_box: gtk4::ListBox, parent:
         if resp == gtk4::ResponseType::Accept {
             if let Some(path) = d.file().and_then(|f| f.path()) {
                 let ps = path.to_string_lossy().into_owned();
-                // 验证目录中包含模型文件
-                let (is_valid, _) = detect_model_type(&path);
-                if !is_valid {
+                let Some(model) = presets::find_model_by_dir(&path) else {
                     let err_dialog = adw::AlertDialog::builder()
                         .heading("无效的模型目录")
-                        .body("所选目录中未找到有效模型文件。请选择包含完整模型文件的目录。")
+                        .body("请选择包含完整内置模型文件的目录。当前仅支持模型页列出的 sherpa-onnx 模型。")
                         .build();
                     err_dialog.add_response("ok", "确定");
                     err_dialog.present(Some(&pw));
                     return;
-                }
+                };
                 let mut guard = s.write().unwrap();
                 if !guard.installed_models.contains(&ps) {
-                    guard.installed_models.push(ps);
-                    let _ = guard.save();
-                    drop(guard);
-                    populate_model_list(&lb, s.clone(), &pw);
+                    guard.installed_models.push(ps.clone());
                 }
+                match model.category {
+                    presets::ModelCategory::Asr => guard.model_path = ps,
+                    presets::ModelCategory::Punctuation => guard.punct_model_path = ps,
+                }
+                let _ = guard.save();
+                drop(guard);
+                populate_model_list(&lb, s.clone(), &pw);
             }
         }
     });
     dialog.show();
-}
-
-/// 检测模型目录中的模型类型
-///
-/// 返回值: `(是否有效, 模型类型标签)`
-fn detect_model_type(dir: &std::path::Path) -> (bool, &'static str) {
-    for model in crate::presets::ASR_MODELS {
-        if model.files.iter().all(|f| dir.join(f.filename).exists()) {
-            return (true, model.name);
-        }
-    }
-    (false, "")
 }
