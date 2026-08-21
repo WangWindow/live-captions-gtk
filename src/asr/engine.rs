@@ -5,6 +5,8 @@ use std::path::Path;
 use anyhow::{Context, Result, bail};
 use sherpa_onnx::{OnlineRecognizer, OnlineRecognizerConfig, OnlineStream};
 
+use super::InferencePolicy;
+
 // ============================================================================
 //  对外统一接口
 // ============================================================================
@@ -15,7 +17,11 @@ pub struct TranscriptionEngine {
 }
 
 impl TranscriptionEngine {
-    pub fn from_model(model_info: &crate::presets::ModelInfo, model_dir: &Path) -> Result<Self> {
+    pub fn from_model(
+        model_info: &crate::presets::ModelInfo,
+        model_dir: &Path,
+        policy: &InferencePolicy,
+    ) -> Result<Self> {
         use crate::presets::ModelKind;
         match &model_info.kind {
             Some(ModelKind::StreamingZipformer {
@@ -24,12 +30,14 @@ impl TranscriptionEngine {
                 joiner,
                 tokens,
                 bpe_vocab,
-            }) => Self::new_streaming(model_dir, encoder, decoder, joiner, tokens, *bpe_vocab),
+            }) => Self::new_streaming(
+                model_dir, encoder, decoder, joiner, tokens, *bpe_vocab, policy,
+            ),
             Some(ModelKind::Paraformer {
                 encoder,
                 decoder,
                 tokens,
-            }) => Self::new_paraformer(model_dir, encoder, decoder, tokens),
+            }) => Self::new_paraformer(model_dir, encoder, decoder, tokens, policy),
             _ => bail!("不支持的模型类型"),
         }
     }
@@ -68,6 +76,7 @@ impl TranscriptionEngine {
         joiner: &str,
         tokens: &str,
         bpe_vocab: Option<&str>,
+        policy: &InferencePolicy,
     ) -> Result<Self> {
         let enc = model_dir.join(encoder);
         let dec = model_dir.join(decoder);
@@ -93,10 +102,10 @@ impl TranscriptionEngine {
         cfg.model_config.transducer.joiner = Some(joi.to_string_lossy().into_owned());
         cfg.model_config.tokens = Some(tok.to_string_lossy().into_owned());
         cfg.model_config.model_type = Some("zipformer2".into());
-        cfg.model_config.num_threads = 4;
+        cfg.model_config.num_threads = policy.num_threads;
         cfg.model_config.provider = Some("cpu".into());
         cfg.enable_endpoint = true;
-        cfg.decoding_method = Some("greedy_search".into());
+        cfg.decoding_method = Some(policy.decoding_method.into());
 
         if let Some(bpe) = bpe_vocab {
             let bpe_path = model_dir.join(bpe);
@@ -115,6 +124,7 @@ impl TranscriptionEngine {
         encoder: &str,
         decoder: &str,
         tokens: &str,
+        policy: &InferencePolicy,
     ) -> Result<Self> {
         let enc = model_dir.join(encoder);
         let dec = model_dir.join(decoder);
@@ -135,10 +145,10 @@ impl TranscriptionEngine {
         cfg.model_config.paraformer.decoder = Some(dec.to_string_lossy().into_owned());
         cfg.model_config.tokens = Some(tok.to_string_lossy().into_owned());
         cfg.model_config.model_type = Some("paraformer".into());
-        cfg.model_config.num_threads = 4;
+        cfg.model_config.num_threads = policy.num_threads;
         cfg.model_config.provider = Some("cpu".into());
         cfg.enable_endpoint = true;
-        cfg.decoding_method = Some("greedy_search".into());
+        cfg.decoding_method = Some(policy.decoding_method.into());
 
         let recognizer = OnlineRecognizer::create(&cfg).context("无法创建流式识别器")?;
         let stream = recognizer.create_stream();

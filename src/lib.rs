@@ -1,4 +1,4 @@
-mod asr;
+pub mod asr;
 pub mod audio;
 mod downloader;
 mod pipeline;
