@@ -4,6 +4,7 @@ use gstreamer as gst;
 use gstreamer::prelude::*;
 use gstreamer_app as gst_app;
 use gstreamer_audio as gst_audio;
+use live_captions_gtk::audio::{standard_audio_caps, GstreamerCapture};
 
 struct PipelineGuard(gst::Pipeline);
 
@@ -100,4 +101,51 @@ fn appsink_queue_is_bounded_and_drops_when_configured() {
         dropped > 0,
         "a live source should report dropped buffers with a one-buffer queue"
     );
+}
+
+#[test]
+fn capture_boundary_maps_samples_and_stops_idempotently() {
+    let mut capture = GstreamerCapture::from_pipeline_description(
+        "audiotestsrc is-live=true wave=sine ! audioconvert ! audioresample ! \
+         audio/x-raw,format=F32LE,layout=interleaved,channels=1,rate=16000 ! \
+         appsink name=audio_sink sync=false max-buffers=4 drop=true",
+    )
+    .expect("the capture boundary should start the fake pipeline");
+
+    let sample = capture
+        .try_pull_sample(Duration::from_secs(2))
+        .expect("pulling from the capture boundary should not fail")
+        .expect("the capture boundary should pull a sample");
+    let samples = GstreamerCapture::samples_from_sample(&sample, capture.audio_info())
+        .expect("the capture boundary should map the standard audio sample");
+
+    assert!(!samples.is_empty());
+    assert!(samples.iter().all(|sample| sample.is_finite()));
+
+    capture.stop().expect("the first stop should succeed");
+    capture.stop().expect("repeated stop should be harmless");
+}
+
+#[test]
+fn capture_boundary_rejects_empty_and_wrong_format_samples() {
+    gst::init().expect("GStreamer should initialize");
+    let audio_info = gst_audio::AudioInfo::from_caps(&standard_audio_caps())
+        .expect("the standard caps should produce AudioInfo");
+
+    let empty_sample = gst::Sample::builder().caps(&standard_audio_caps()).build();
+    assert!(GstreamerCapture::samples_from_sample(&empty_sample, &audio_info).is_err());
+
+    let wrong_caps = gst::Caps::builder("audio/x-raw")
+        .field("format", "S16LE")
+        .field("layout", "interleaved")
+        .field("channels", 1i32)
+        .field("rate", 16_000i32)
+        .build();
+    let buffer = gst::Buffer::with_size(4).expect("the test buffer should allocate");
+    let wrong_sample = gst::Sample::builder()
+        .buffer(&buffer)
+        .caps(&wrong_caps)
+        .build();
+
+    assert!(GstreamerCapture::samples_from_sample(&wrong_sample, &audio_info).is_err());
 }

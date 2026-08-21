@@ -6,7 +6,9 @@
 mod block;
 mod capture;
 mod device;
+mod gstreamer;
 
 pub use block::AudioBlockAssembler;
-pub use capture::{AudioCapture, process_chunk};
-pub use device::{AudioSource, resolve};
+pub use capture::{process_chunk, AudioCapture};
+pub use device::{resolve, AudioSource};
+pub use gstreamer::{standard_audio_caps, GstreamerCapture};
