@@ -32,7 +32,6 @@ pub struct GstreamerCapture {
     pipeline: gst::Pipeline,
     appsink: gst_app::AppSink,
     audio_info: gst_audio::AudioInfo,
-    last_dropped_buffers: u64,
 }
 
 impl GstreamerCapture {
@@ -100,13 +99,14 @@ impl GstreamerCapture {
             .map_err(|_| anyhow!("audio_sink 不是 appsink 元素"))?;
 
         appsink.set_max_buffers(8);
-        appsink.set_leaky_type(gst_app::AppLeakyType::Downstream);
+        // `drop` is available since GStreamer 1.0. Keep the appsink bounded
+        // without requiring the newer 1.28 `leaky-type` API.
+        appsink.set_property("drop", true);
         appsink.set_property("emit-signals", false);
 
         let caps = standard_audio_caps();
         let audio_info =
             gst_audio::AudioInfo::from_caps(&caps).context("无法从标准音频 caps 创建 AudioInfo")?;
-        let last_dropped_buffers = appsink.property::<u64>("dropped");
 
         if let Err(state_error) = pipeline.set_state(gst::State::Playing) {
             let detail = pipeline_error_detail(&pipeline);
@@ -119,7 +119,6 @@ impl GstreamerCapture {
             pipeline,
             appsink,
             audio_info,
-            last_dropped_buffers,
         })
     }
 
@@ -180,15 +179,6 @@ impl GstreamerCapture {
         );
 
         Ok(samples)
-    }
-
-    /// Return the number of newly dropped appsink buffers since the previous
-    /// call, using GStreamer's monotonic `dropped` property.
-    pub fn take_dropped_buffers(&mut self) -> u64 {
-        let dropped = self.appsink.property::<u64>("dropped");
-        let delta = dropped.saturating_sub(self.last_dropped_buffers);
-        self.last_dropped_buffers = dropped;
-        delta
     }
 
     /// Stop the pipeline and release the source. Repeated calls are safe.
