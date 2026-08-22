@@ -194,11 +194,6 @@ fn run_capture(
     let mut blocks = AudioBlockAssembler::new(block_samples);
 
     while !stop_flag.load(Ordering::Relaxed) {
-        let dropped_buffers = capture.take_dropped_buffers();
-        if dropped_buffers > 0 {
-            dropped_blocks.fetch_add(dropped_buffers, Ordering::Release);
-        }
-
         let sample = match capture.try_pull_sample(POLL_INTERVAL) {
             Ok(Some(sample)) => sample,
             Ok(None) => continue,
