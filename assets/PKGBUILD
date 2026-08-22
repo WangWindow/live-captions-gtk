@@ -1,0 +1,31 @@
+pkgname=live-captions-gtk
+pkgver=0.1.2
+pkgrel=1
+pkgdesc='Real-time speech captions for the desktop'
+arch=('x86_64')
+url='https://github.com/WangWindow/live-captions-gtk'
+license=('MIT')
+depends=(
+  'gtk4'
+  'libadwaita'
+  'gstreamer'
+  'gst-plugins-base-libs'
+  'gst-plugins-good'
+  'gst-plugin-pipewire'
+  'libpulse'
+)
+source=(
+  'live-captions-gtk'
+  'live-captions-gtk.desktop'
+  'live-captions-gtk.png'
+)
+sha256sums=('SKIP' 'SKIP' 'SKIP')
+
+package() {
+  install -Dm755 "$srcdir/live-captions-gtk" \
+    "$pkgdir/usr/bin/live-captions-gtk"
+  install -Dm644 "$srcdir/live-captions-gtk.desktop" \
+    "$pkgdir/usr/share/applications/live-captions-gtk.desktop"
+  install -Dm644 "$srcdir/live-captions-gtk.png" \
+    "$pkgdir/usr/share/icons/hicolor/512x512/apps/live-captions-gtk.png"
+}
